@@ -1,0 +1,7 @@
+to do:
+    1.- levantar postgresql container para desarrollo local nmas y luego en produccion levantar la bd en la VM
+    2.- levantar flask con gunicorn para sv de produccion
+    3.- en un futuro en la vm: 
+        3.1- descargar postgresq
+        3.2- descargar nginx
+        3.2- descargar docker
