@@ -1,5 +1,4 @@
 import React from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { BarChart2, TrendingUp, Activity, PieChart } from "lucide-react";
 
 export function Dashboard() {
@@ -11,50 +10,72 @@ export function Dashboard() {
   ];
 
   const metricas = [
-    { nombre: "Sharpe Ratio", valor: "1.87", icon: <TrendingUp className="text-green-600 w-6 h-6" /> },
-    { nombre: "Rentabilidad esperada", valor: "7.4%", icon: <BarChart2 className="text-blue-600 w-6 h-6" /> },
-    { nombre: "Volatilidad", valor: "2.3%", icon: <Activity className="text-yellow-600 w-6 h-6" /> },
+    { nombre: "Sharpe Ratio", valor: "1.87", icon: <TrendingUp color="green" size={24} /> },
+    { nombre: "Rentabilidad esperada", valor: "7.4%", icon: <BarChart2 color="blue" size={24} /> },
+    { nombre: "Volatilidad", valor: "2.3%", icon: <Activity color="orange" size={24} /> },
   ];
 
+  const cardStyle = {
+    backgroundColor: "#fff",
+    padding: "16px",
+    marginBottom: "16px",
+    borderRadius: "8px",
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+    textAlign: "left",
+  };
+
   return (
-    <div className="min-h-screen p-6 bg-gray-50 text-center">
-      <h1 className="text-3xl font-bold mb-6"> Tu Panel Diario</h1>
+    <div style={{ minHeight: "100vh", padding: "24px", background: "#f3f4f6" }}>
+      <h1 style={{ fontSize: "28px", fontWeight: "bold", marginBottom: "24px", textAlign: "center" }}>
+        Tu Panel Diario
+      </h1>
 
-      <Card className="mb-6 shadow-md">
-        <CardContent className="p-6">
-          <h2 className="text-xl font-semibold mb-2">Recomendación de Hoy</h2>
-          <p className="text-gray-600">Hoy te recomendamos distribuir tu portafolio en estas 4 monedas clave según tu perfil de riesgo.</p>
-        </CardContent>
-      </Card>
+      <div style={cardStyle}>
+        <h2 style={{ fontSize: "20px", fontWeight: "600", marginBottom: "8px" }}>
+          Recomendación de Hoy
+        </h2>
+        <p style={{ color: "#4b5563" }}>
+          Hoy te recomendamos distribuir tu portafolio en estas 4 monedas clave según tu perfil de riesgo.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "16px", marginBottom: "24px" }}>
         {monedas.map((m, i) => (
-          <Card key={i} className="shadow-sm">
-            <CardContent className="p-4 text-left">
-              <h3 className="text-lg font-bold text-indigo-700">{m.nombre}</h3>
-              <p className="text-sm text-gray-500">Rentabilidad: {m.rentabilidad}</p>
-              <p className="text-sm text-gray-500">Riesgo: {m.riesgo}</p>
-            </CardContent>
-          </Card>
+          <div key={i} style={cardStyle}>
+            <h3 style={{ fontSize: "18px", fontWeight: "600", color: "#4338ca" }}>{m.nombre}</h3>
+            <p style={{ fontSize: "14px", color: "#6b7280" }}>Rentabilidad: {m.rentabilidad}</p>
+            <p style={{ fontSize: "14px", color: "#6b7280" }}>Riesgo: {m.riesgo}</p>
+          </div>
         ))}
       </div>
 
-      <div className="w-full max-w-2xl h-64 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center text-gray-400 mb-10">
-        <PieChart className="w-6 h-6 mr-2" />
+      <div style={{
+        width: "100%",
+        maxWidth: "600px",
+        height: "200px",
+        margin: "0 auto 24px auto",
+        border: "2px dashed #d1d5db",
+        borderRadius: "12px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#9ca3af"
+      }}>
+        <PieChart size={24} style={{ marginRight: "8px" }} />
         <span>Gráfico de portafolio próximamente</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px" }}>
         {metricas.map((m, i) => (
-          <Card key={i} className="shadow-sm">
-            <CardContent className="p-4 flex flex-col items-center">
-              {m.icon}
-              <h4 className="font-semibold mt-2">{m.nombre}</h4>
-              <p className="text-gray-600 text-sm">{m.valor}</p>
-            </CardContent>
-          </Card>
+          <div key={i} style={{ ...cardStyle, textAlign: "center" }}>
+            {m.icon}
+            <h4 style={{ fontWeight: "600", marginTop: "8px" }}>{m.nombre}</h4>
+            <p style={{ fontSize: "14px", color: "#6b7280" }}>{m.valor}</p>
+          </div>
         ))}
       </div>
     </div>
   );
 }
+
+export default Dashboard;

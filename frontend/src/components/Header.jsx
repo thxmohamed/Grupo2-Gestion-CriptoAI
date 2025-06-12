@@ -5,29 +5,69 @@ import { Home, LayoutDashboard, History } from "lucide-react";
 export function Header() {
   const location = useLocation();
 
-  const linkStyle = (path) =>
-    `flex items-center gap-1 px-4 py-2 rounded-md text-sm font-medium transition ${
-      location.pathname === path
-        ? "bg-indigo-600 text-white"
-        : "text-gray-600 hover:bg-gray-100"
-    }`;
+  const isActive = (path) => location.pathname === path;
+
+  const linkBaseStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "8px 16px",
+    borderRadius: "6px",
+    fontSize: "14px",
+    fontWeight: 500,
+    textDecoration: "none",
+    transition: "background-color 0.2s ease, color 0.2s ease",
+  };
+
+  const activeStyle = {
+    backgroundColor: "#4f46e5", // Indigo 600
+    color: "white",
+  };
+
+  const inactiveStyle = {
+    color: "#4b5563", // Gray 600
+  };
+
+  const hoverStyle = {
+    backgroundColor: "#f3f4f6", // Gray 100
+  };
+
+  const mergeStyle = (path) => ({
+    ...linkBaseStyle,
+    ...(isActive(path) ? activeStyle : inactiveStyle),
+    ...(isActive(path) ? {} : hoverStyle),
+  });
 
   return (
-    <header className="w-full bg-white shadow-sm mb-6">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-indigo-700">CryptoAdvisor</h1>
-        <nav className="flex gap-2">
-          <Link to="/" className={linkStyle("/")}>
-            <Home className="w-4 h-4" /> Inicio
+    <header style={{
+      width: "100%",
+      backgroundColor: "#ffffff",
+      boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+      marginBottom: "24px",
+    }}>
+      <div style={{
+        maxWidth: "1200px",
+        margin: "0 auto",
+        padding: "12px 16px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}>
+        <h1 style={{ fontSize: "20px", fontWeight: "bold", color: "#4338ca" }}>CryptoAdvisor</h1>
+        <nav style={{ display: "flex", gap: "12px" }}>
+          <Link to="/" style={mergeStyle("/")}>
+            <Home size={16} /> Inicio
           </Link>
-          <Link to="/dashboard" className={linkStyle("/dashboard")}>
-            <LayoutDashboard className="w-4 h-4" /> Dashboard
+          <Link to="/dashboard" style={mergeStyle("/dashboard")}>
+            <LayoutDashboard size={16} /> Dashboard
           </Link>
-          <Link to="/historial" className={linkStyle("/historial")}>
-            <History className="w-4 h-4" /> Historial
+          <Link to="/historial" style={mergeStyle("/historial")}>
+            <History size={16} /> Historial
           </Link>
         </nav>
       </div>
     </header>
   );
 }
+
+export default Header;
