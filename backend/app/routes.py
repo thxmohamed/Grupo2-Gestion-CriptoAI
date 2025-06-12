@@ -245,3 +245,25 @@ async def get_market_overview():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo resumen del mercado: {str(e)}")
+
+@router.get("/economic-metrics")
+async def get_economic_metrics():
+    """
+    Endpoint que retorna métricas cuantitativas de inversión y riesgo para todas las monedas del market overview.
+    """
+    try:
+        # Obtener datos del market overview (llamada interna)
+        async with httpx.AsyncClient() as client:
+            url = "http://localhost:8000/api/market-overview"
+            response = await client.get(url, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+
+        if not data.get("success") or not data["data"].get("top_cryptocurrencies"):
+            raise HTTPException(status_code=503, detail="No se pueden obtener datos del market overview")
+
+        coins = data["data"]["top_cryptocurrencies"]
+        metrics = economic_analyzer.compute_market_metrics(coins)
+        return {"success": True, "metrics": metrics, "timestamp": datetime.now().isoformat()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo métricas económicas: {str(e)}")

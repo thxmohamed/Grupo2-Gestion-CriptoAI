@@ -276,3 +276,121 @@ class EconomicAnalysisAgent:
             return []
         finally:
             self.db.close()
+    
+    def compute_market_metrics(self, coins: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Calcula métricas cuantitativas de inversión y riesgo para cada moneda del market overview.
+        Algoritmo mejorado que usa únicamente: current_price, market_cap, price_change_24h, volume_24h
+        """
+        results = []
+        
+        # Calcular percentiles para normalización relativa
+        market_caps = [coin.get('market_cap', 0) for coin in coins]
+        volumes = [coin.get('volume_24h', 0) for coin in coins]
+        price_changes = [abs(coin.get('price_change_24h', 0)) for coin in coins]
+        
+        max_market_cap = max(market_caps) if market_caps else 1
+        max_volume = max(volumes) if volumes else 1
+        max_price_change = max(price_changes) if price_changes else 1
+        
+        for coin in coins:
+            symbol = coin.get("symbol", "")
+            name = coin.get("name", "")
+            current_price = coin.get("current_price", 0)
+            market_cap = coin.get("market_cap", 0)
+            price_change_24h = coin.get("price_change_24h", 0)
+            volume_24h = coin.get("volume_24h", 0)
+            
+            # === RENTABILIDAD ESPERADA ===
+            # Momentum: price_change_24h ajustado por tendencia del mercado
+            expected_return = price_change_24h * 1.1 if price_change_24h > 0 else price_change_24h * 0.9
+            
+            # === VOLATILIDAD AVANZADA ===
+            # Combina: cambio de precio absoluto + ratio volumen/market_cap + factor de market cap
+            abs_price_change = abs(price_change_24h)
+            volume_ratio = volume_24h / max(market_cap, 1)  # Liquidez relativa
+            market_cap_factor = 1 - (market_cap / max_market_cap)  # Monedas pequeñas = más volátiles
+            
+            # Detectar stablecoins (ajuste económico realista)
+            is_stablecoin = symbol in ['USDT', 'USDC', 'BUSD', 'DAI', 'TUSD', 'USDD', 'FRAX', 'LUSD']
+            
+            if is_stablecoin:
+                # Stablecoins: volatilidad muy baja, basada solo en price_change
+                volatility = abs_price_change * 0.2  # Factor muy bajo para stablecoins
+                volatility = min(1.0, volatility)    # Máximo 1% para stablecoins
+            else:
+                volatility = (
+                    abs_price_change * 2 +                    # Base: movimiento de precio
+                    min(volume_ratio * 50, 5) +               # Liquidez factor reducido
+                    market_cap_factor * 6 +                   # Market cap factor reducido
+                    (3 if volume_24h < market_cap * 0.01 else 0)  # Penalizar bajo volumen
+                )
+                volatility = min(30.0, volatility)  # Máximo 30% para no-stablecoins
+            
+            # === SCORE DE INVERSIÓN ===
+            # Combina: estabilidad market cap + momentum + liquidez + fundamentales
+            market_cap_score = min(30, (market_cap / max_market_cap) * 30)  # Max 30 puntos
+            momentum_score = max(-15, min(15, price_change_24h * 2))        # -15 a +15 puntos
+            liquidity_score = min(25, (volume_24h / max_volume) * 25)       # Max 25 puntos
+            stability_score = max(0, 30 - volatility)                       # Max 30 puntos
+            
+            investment_score = market_cap_score + momentum_score + liquidity_score + stability_score
+            
+            # === SCORE DE RIESGO ===
+            # Factores de riesgo: volatilidad + market cap inverso + liquidez baja
+            volatility_risk = volatility * 1.5                              # Peso alto a volatilidad
+            market_cap_risk = (1 - market_cap / max_market_cap) * 25        # Market cap bajo = riesgo
+            liquidity_risk = max(0, 10 - (volume_ratio * 1000000))          # Baja liquidez = riesgo
+            momentum_risk = max(0, abs(price_change_24h) - 3) * 2           # Movimientos extremos
+            
+            # Ajuste especial para stablecoins
+            if is_stablecoin:
+                # Stablecoins tienen riesgo muy bajo por diseño
+                risk_score = volatility_risk * 0.5 + momentum_risk * 0.3    # Factores muy reducidos
+                risk_score = min(8.0, risk_score)                           # Máximo risk_score bajo para stablecoins
+            else:
+                risk_score = volatility_risk + market_cap_risk + liquidity_risk + momentum_risk
+                risk_score = min(100.0, risk_score)
+            
+            # === NIVEL DE RIESGO ===
+            # Umbrales ajustados para distribución más realista
+            if risk_score >= 15 or volatility >= 10:
+                risk_level = "high"
+            elif risk_score >= 8 or volatility >= 5:
+                risk_level = "medium"
+            else:
+                risk_level = "low"
+            
+            # === MÉTRICAS ADICIONALES ===
+            # Ratio de liquidez (volumen/market_cap como %)
+            liquidity_ratio = (volume_24h / max(market_cap, 1)) * 100
+            
+            # Market sentiment basado en price_change_24h
+            if price_change_24h > 2:
+                market_sentiment = "bullish"
+            elif price_change_24h < -2:
+                market_sentiment = "bearish"
+            else:
+                market_sentiment = "neutral"
+            
+            # Estabilidad (inverso de volatilidad, 0-100)
+            stability_score = max(0, 100 - (volatility * 2))
+            
+            results.append({
+                "symbol": symbol,
+                "name": name,
+                "current_price": current_price,
+                "market_cap": market_cap,
+                "price_change_24h": price_change_24h,
+                "volume_24h": volume_24h,
+                "expected_return": round(expected_return, 3),
+                "volatility": round(volatility, 2),
+                "investment_score": round(investment_score, 2),
+                "risk_score": round(risk_score, 2),
+                "risk_level": risk_level,
+                "liquidity_ratio": round(liquidity_ratio, 4),
+                "market_sentiment": market_sentiment,
+                "stability_score": round(stability_score, 2)
+            })
+        
+        return results
