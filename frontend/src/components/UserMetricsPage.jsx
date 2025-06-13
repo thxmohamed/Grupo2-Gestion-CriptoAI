@@ -1,7 +1,22 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useParams, Link, useLocation } from "react-router-dom";
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid
+} from "recharts";
+import ReactMarkdown from "react-markdown";
+import '/src/index.css';
+
 
 export default function UserMetricsPage() {
   const { userId } = useParams();
@@ -9,19 +24,25 @@ export default function UserMetricsPage() {
   const [portfolio, setPortfolio] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [aiReport, setAiReport] = useState(null);
 
   const nombre = location.state?.nombre;
   const apellido = location.state?.apellido;
 
   useEffect(() => {
+    setLoading(true);
     axios.post(`http://localhost:8000/api/optimize-portfolio`, { id: userId })
       .then(response => {
         setPortfolio(response.data);
+        return axios.post("http://127.0.0.1:8000/api/generate-portfolio-report", { id: userId });
+      })
+      .then(reportResponse => {
+        setAiReport(reportResponse.data.ai_report);
         setLoading(false);
       })
       .catch(err => {
-        console.error("Error al obtener el portafolio:", err);
-        setError("No se pudo cargar el portafolio.");
+        console.error("Error al obtener datos:", err);
+        setError("No se pudo cargar el portafolio o el reporte.");
         setLoading(false);
       });
   }, [userId]);
@@ -38,7 +59,7 @@ export default function UserMetricsPage() {
   if (loading) return <p style={{ textAlign: "center" }}>Cargando portafolio...</p>;
   if (error) return <p style={{ color: "red", textAlign: "center" }}>{error}</p>;
 
-  const { user_profile, portfolio_optimization, portfolio_metrics, reasoning } = portfolio;
+  const { user_profile, portfolio_optimization, portfolio_metrics } = portfolio;
 
   const chartData = portfolio_optimization.top_4_coins.map(coin => ({
     name: coin.name,
@@ -101,7 +122,13 @@ export default function UserMetricsPage() {
       <h2 style={{ marginBottom: "16px", textAlign: "center" }}>Detalle por criptomoneda recomendada</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
         {portfolio_optimization.top_4_coins.map((coin, index) => (
-          <div key={index} style={{ backgroundColor: "#fff", borderRadius: "8px", padding: "20px", borderLeft: `6px solid ${getRiskBadgeColor(coin.risk_level)}`, boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }}>
+          <div key={index} style={{
+            backgroundColor: "#fff",
+            borderRadius: "8px",
+            padding: "20px",
+            borderLeft: `6px solid ${getRiskBadgeColor(coin.risk_level)}`,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.1)"
+          }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
               <h2 style={{ margin: 0, fontSize: "20px" }}>{coin.name} ({coin.symbol})</h2>
               <span style={{
@@ -124,6 +151,15 @@ export default function UserMetricsPage() {
           </div>
         ))}
       </div>
+
+      {aiReport && (
+        <div style={{ backgroundColor: "#fff", padding: "24px", borderRadius: "8px", marginTop: "32px", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }}>
+          <div className="markdown-report">
+            <ReactMarkdown>{aiReport}</ReactMarkdown>
+          </div>
+
+        </div>
+      )}
 
     </div>
   );

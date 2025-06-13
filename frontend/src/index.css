@@ -115,3 +115,51 @@ h1 {
 .tag.green {
   background-color: #10b981;
 }
+
+.markdown-report {
+  font-family: 'Segoe UI', sans-serif;
+  line-height: 1.75;
+  color: #333;
+}
+
+.markdown-report h1,
+.markdown-report h2 {
+  text-align: center;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.markdown-report h1 {
+  font-size: 1.8rem;
+  color: #4a4a4a;
+}
+
+.markdown-report h2 {
+  font-size: 1.5rem;
+  color: #2c3e50;
+}
+
+.markdown-report h3 {
+  font-size: 1.2rem;
+  margin-top: 1.2rem;
+  color: #333;
+}
+
+.markdown-report p {
+  margin-bottom: 1rem;
+}
+
+.markdown-report strong {
+  color: #111;
+}
+
+.markdown-report ul {
+  list-style: disc inside;
+  margin-left: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.markdown-report li {
+  margin-bottom: 0.5rem;
+}
