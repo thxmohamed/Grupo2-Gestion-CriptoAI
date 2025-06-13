@@ -259,7 +259,7 @@ async def get_market_overview():
             params = {
                 'vs_currency': 'usd',
                 'order': 'market_cap_desc',
-                'per_page': 10,
+                'per_page': 20,
                 'page': 1,
                 'sparkline': False,
                 'price_change_percentage': '24h'
@@ -273,7 +273,7 @@ async def get_market_overview():
             raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado")
         
         # Procesar y resumir datos
-        top_10 = market_data[:10]
+        top_10 = market_data[:20]
         
         total_market_cap = sum(coin.get('market_cap', 0) for coin in top_10)
         avg_price_change = sum(coin.get('price_change_percentage_24h', 0) for coin in top_10) / len(top_10)

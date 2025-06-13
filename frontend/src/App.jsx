@@ -2,6 +2,7 @@ import './App.css'
 import {BrowserRouter as Router, Route, Routes} from 'react-router-dom'
 import Header from "./components/Header"
 import HomePage from './components/HomePage';
+import UserMetricsPage from './components/UserMetricsPage';
 import Dashboard from './components/Dashboard';
 import Record from './components/Record'
 import NotFound from './components/NotFound';
@@ -15,6 +16,7 @@ function App() {
           <Header></Header>
             <Routes>
             <Route path="/" element={<HomePage />} />
+             <Route path="/admin/user/:userId" element={<UserMetricsPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/historial" element={<Record />} />
 

@@ -61,9 +61,6 @@ export function Header() {
           <Link to="/dashboard" style={mergeStyle("/dashboard")}>
             <LayoutDashboard size={16} /> Dashboard
           </Link>
-          <Link to="/historial" style={mergeStyle("/historial")}>
-            <History size={16} /> Historial
-          </Link>
         </nav>
       </div>
     </header>
