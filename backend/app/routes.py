@@ -1,14 +1,18 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from sqlalchemy.orm import Session
 import asyncio
 import httpx
+import json
 
 from app.agents.data_collector import DataCollectorAgent
 from app.agents.economic_analysis import EconomicAnalysisAgent
 from app.agents.portfolio_optimizer import PortfolioOptimizationAgent
 from app.agents.communication import CommunicationAgent
+from app.models import UserProfile
+from app import SessionLocal
 
 router = APIRouter()
 
@@ -43,6 +47,65 @@ class PortfolioRequestModel(BaseModel):
     investment_amount: float = 1000
     investment_horizon: str = "medium"
     preferred_sectors: List[str] = []
+
+# Modelos Pydantic para validación de UserProfile
+class UserProfileCreate(BaseModel):
+    user_id: Optional[str] = None  # Ahora es opcional
+    nombre: str
+    apellido: str
+    telefono: Optional[str] = None
+    risk_tolerance: str = "moderate"  # conservative, moderate, aggressive
+    investment_amount: float = 1000
+    investment_horizon: str = "medium"  # short, medium, long
+    preferred_sectors: List[str] = []
+    is_subscribed: bool = False
+
+class UserProfileUpdate(BaseModel):
+    user_id: Optional[str] = None  # También opcional en updates
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    telefono: Optional[str] = None
+    risk_tolerance: Optional[str] = None
+    investment_amount: Optional[float] = None
+    investment_horizon: Optional[str] = None
+    preferred_sectors: Optional[List[str]] = None
+    is_subscribed: Optional[bool] = None
+
+class UserProfileResponse(BaseModel):
+    id: int
+    user_id: Optional[str] = None  # También opcional en responses
+    nombre: str
+    apellido: str
+    telefono: Optional[str] = None
+    risk_tolerance: str
+    investment_amount: float
+    investment_horizon: str
+    preferred_sectors: List[str]
+    is_subscribed: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# Modelo Pydantic para el request de optimización de portfolio
+class PortfolioOptimizationRequest(BaseModel):
+    user_id: Optional[str] = None
+    risk_tolerance: str = "moderate"  # conservative, moderate, aggressive
+    investment_amount: float = 1000
+    investment_horizon: str = "medium"  # short, medium, long
+
+# Modelo Pydantic simplificado para optimización de portfolio (solo user_id)
+class PortfolioOptimizeRequest(BaseModel):
+    user_id: str
+
+# Dependency para obtener la sesión de base de datos
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 @router.get("/")
 async def root():
@@ -267,3 +330,363 @@ async def get_economic_metrics():
         return {"success": True, "metrics": metrics, "timestamp": datetime.now().isoformat()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo métricas económicas: {str(e)}")
+
+# ================================
+# CRUD ENDPOINTS FOR USER PROFILE
+# ================================
+
+@router.post("/user-profiles/", response_model=UserProfileResponse)
+async def create_user_profile(profile: UserProfileCreate, db: Session = Depends(get_db)):
+    """
+    Crear un nuevo perfil de usuario
+    """
+    try:
+        # Verificar si el user_id ya existe (solo si se proporciona)
+        if profile.user_id:
+            existing_profile = db.query(UserProfile).filter(UserProfile.user_id == profile.user_id).first()
+            if existing_profile:
+                raise HTTPException(status_code=400, detail="Ya existe un perfil para este user_id")
+        
+        # Convertir preferred_sectors a JSON string
+        preferred_sectors_json = json.dumps(profile.preferred_sectors)
+        
+        # Crear nuevo perfil
+        db_profile = UserProfile(
+            user_id=profile.user_id,  # Puede ser None
+            nombre=profile.nombre,
+            apellido=profile.apellido,
+            telefono=profile.telefono,
+            risk_tolerance=profile.risk_tolerance,
+            investment_amount=profile.investment_amount,
+            investment_horizon=profile.investment_horizon,
+            preferred_sectors=preferred_sectors_json,
+            is_subscribed=profile.is_subscribed
+        )
+        
+        db.add(db_profile)
+        db.commit()
+        db.refresh(db_profile)
+        
+        # Convertir JSON string back to list para response
+        response_profile = UserProfileResponse(
+            id=db_profile.id,
+            user_id=db_profile.user_id,
+            nombre=db_profile.nombre,
+            apellido=db_profile.apellido,
+            telefono=db_profile.telefono,
+            risk_tolerance=db_profile.risk_tolerance,
+            investment_amount=db_profile.investment_amount,
+            investment_horizon=db_profile.investment_horizon,
+            preferred_sectors=json.loads(db_profile.preferred_sectors) if db_profile.preferred_sectors else [],
+            is_subscribed=db_profile.is_subscribed,
+            created_at=db_profile.created_at,
+            updated_at=db_profile.updated_at
+        )
+        
+        return response_profile
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creando perfil de usuario: {str(e)}")
+
+@router.get("/user-profiles/{user_id}", response_model=UserProfileResponse)
+async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
+    """
+    Obtener un perfil de usuario por user_id
+    """
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Perfil de usuario no encontrado")
+        
+        # Convertir JSON string to list para response
+        response_profile = UserProfileResponse(
+            id=profile.id,
+            user_id=profile.user_id,
+            nombre=profile.nombre,
+            apellido=profile.apellido,
+            telefono=profile.telefono,
+            risk_tolerance=profile.risk_tolerance,
+            investment_amount=profile.investment_amount,
+            investment_horizon=profile.investment_horizon,
+            preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
+            is_subscribed=profile.is_subscribed,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at
+        )
+        
+        return response_profile
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo perfil de usuario: {str(e)}")
+
+@router.get("/user-profiles/", response_model=List[UserProfileResponse])
+async def get_all_user_profiles(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """
+    Obtener todos los perfiles de usuario con paginación
+    """
+    try:
+        profiles = db.query(UserProfile).offset(skip).limit(limit).all()
+        
+        response_profiles = []
+        for profile in profiles:
+            response_profile = UserProfileResponse(
+                id=profile.id,
+                user_id=profile.user_id,
+                nombre=profile.nombre,
+                apellido=profile.apellido,
+                telefono=profile.telefono,
+                risk_tolerance=profile.risk_tolerance,
+                investment_amount=profile.investment_amount,
+                investment_horizon=profile.investment_horizon,
+                preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
+                is_subscribed=profile.is_subscribed,
+                created_at=profile.created_at,
+                updated_at=profile.updated_at
+            )
+            response_profiles.append(response_profile)
+        
+        return response_profiles
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo perfiles de usuario: {str(e)}")
+
+@router.put("/user-profiles/{user_id}", response_model=UserProfileResponse)
+async def update_user_profile(user_id: str, profile_update: UserProfileUpdate, db: Session = Depends(get_db)):
+    """
+    Actualizar un perfil de usuario existente
+    """
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Perfil de usuario no encontrado")
+        
+        # Actualizar solo los campos proporcionados
+        update_data = profile_update.dict(exclude_unset=True)
+        
+        for field, value in update_data.items():
+            if field == "preferred_sectors" and value is not None:
+                # Convertir list a JSON string
+                setattr(profile, field, json.dumps(value))
+            elif value is not None:
+                setattr(profile, field, value)
+        
+        db.commit()
+        db.refresh(profile)
+        
+        # Convertir JSON string back to list para response
+        response_profile = UserProfileResponse(
+            id=profile.id,
+            user_id=profile.user_id,
+            nombre=profile.nombre,
+            apellido=profile.apellido,
+            telefono=profile.telefono,
+            risk_tolerance=profile.risk_tolerance,
+            investment_amount=profile.investment_amount,
+            investment_horizon=profile.investment_horizon,
+            preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
+            is_subscribed=profile.is_subscribed,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at
+        )
+        
+        return response_profile
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error actualizando perfil de usuario: {str(e)}")
+
+@router.delete("/user-profiles/{user_id}")
+async def delete_user_profile(user_id: str, db: Session = Depends(get_db)):
+    """
+    Eliminar un perfil de usuario
+    """
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Perfil de usuario no encontrado")
+        
+        db.delete(profile)
+        db.commit()
+        
+        return {"message": f"Perfil de usuario {user_id} eliminado exitosamente"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error eliminando perfil de usuario: {str(e)}")
+
+@router.get("/user-profiles/{user_id}/exists")
+async def check_user_profile_exists(user_id: str, db: Session = Depends(get_db)):
+    """
+    Verificar si existe un perfil para un user_id específico
+    """
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        return {"exists": profile is not None, "user_id": user_id}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error verificando existencia de perfil: {str(e)}")
+
+# ================================
+# ENDPOINTS ALTERNATIVOS USANDO ID
+# ================================
+
+@router.get("/user-profiles/by-id/{profile_id}", response_model=UserProfileResponse)
+async def get_user_profile_by_id(profile_id: int, db: Session = Depends(get_db)):
+    """
+    Obtener un perfil de usuario por ID numérico
+    """
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.id == profile_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Perfil de usuario no encontrado")
+        
+        # Convertir JSON string to list para response
+        response_profile = UserProfileResponse(
+            id=profile.id,
+            user_id=profile.user_id,
+            nombre=profile.nombre,
+            apellido=profile.apellido,
+            telefono=profile.telefono,
+            risk_tolerance=profile.risk_tolerance,
+            investment_amount=profile.investment_amount,
+            investment_horizon=profile.investment_horizon,
+            preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
+            is_subscribed=profile.is_subscribed,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at
+        )
+        
+        return response_profile
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo perfil de usuario: {str(e)}")
+
+@router.put("/user-profiles/by-id/{profile_id}", response_model=UserProfileResponse)
+async def update_user_profile_by_id(profile_id: int, profile_update: UserProfileUpdate, db: Session = Depends(get_db)):
+    """
+    Actualizar un perfil de usuario existente por ID numérico
+    """
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.id == profile_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Perfil de usuario no encontrado")
+        
+        # Actualizar solo los campos proporcionados
+        update_data = profile_update.dict(exclude_unset=True)
+        
+        # Verificar unicidad de user_id si se está actualizando
+        if "user_id" in update_data and update_data["user_id"]:
+            existing_profile = db.query(UserProfile).filter(
+                UserProfile.user_id == update_data["user_id"],
+                UserProfile.id != profile_id
+            ).first()
+            if existing_profile:
+                raise HTTPException(status_code=400, detail="Ya existe un perfil con este user_id")
+        
+        for field, value in update_data.items():
+            if field == "preferred_sectors" and value is not None:
+                # Convertir list a JSON string
+                setattr(profile, field, json.dumps(value))
+            elif value is not None:
+                setattr(profile, field, value)
+        
+        db.commit()
+        db.refresh(profile)
+        
+        # Convertir JSON string back to list para response
+        response_profile = UserProfileResponse(
+            id=profile.id,
+            user_id=profile.user_id,
+            nombre=profile.nombre,
+            apellido=profile.apellido,
+            telefono=profile.telefono,
+            risk_tolerance=profile.risk_tolerance,
+            investment_amount=profile.investment_amount,
+            investment_horizon=profile.investment_horizon,
+            preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
+            is_subscribed=profile.is_subscribed,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at
+        )
+        
+        return response_profile
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error actualizando perfil de usuario: {str(e)}")
+
+@router.delete("/user-profiles/by-id/{profile_id}")
+async def delete_user_profile_by_id(profile_id: int, db: Session = Depends(get_db)):
+    """
+    Eliminar un perfil de usuario por ID numérico
+    """
+    try:
+        profile = db.query(UserProfile).filter(UserProfile.id == profile_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Perfil de usuario no encontrado")
+        
+        db.delete(profile)
+        db.commit()
+        
+        return {"message": f"Perfil de usuario con ID {profile_id} eliminado exitosamente"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error eliminando perfil de usuario: {str(e)}")
+
+@router.post("/optimize-portfolio")
+async def optimize_portfolio(request: PortfolioOptimizeRequest, db: Session = Depends(get_db)):
+    """
+    Endpoint para optimizar portfolio basado en métricas económicas y perfil del usuario
+    Solo requiere user_id, obtiene automáticamente el perfil del usuario de la BD
+    Retorna las 4 mejores monedas con porcentajes de asignación y métricas completas
+    """
+    try:
+        # Buscar el perfil del usuario en la base de datos
+        user_profile = db.query(UserProfile).filter(UserProfile.user_id == request.user_id).first()
+        
+        if not user_profile:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No se encontró el perfil del usuario con ID: {request.user_id}"
+            )
+        
+        # Convertir el perfil del usuario a diccionario
+        user_data = {
+            "user_id": user_profile.user_id,
+            "risk_tolerance": user_profile.risk_tolerance,
+            "investment_amount": user_profile.investment_amount,
+            "investment_horizon": user_profile.investment_horizon,
+            "preferred_sectors": json.loads(user_profile.preferred_sectors) if user_profile.preferred_sectors else []
+        }
+        
+        # Optimizar portfolio usando métricas económicas
+        optimization_result = await portfolio_optimizer.optimize_portfolio_with_economic_metrics(user_data)
+        
+        if not optimization_result.get('success'):
+            raise HTTPException(
+                status_code=500, 
+                detail=optimization_result.get('message', 'Error en optimización de portfolio')
+            )
+        
+        return optimization_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error optimizando portfolio: {str(e)}")

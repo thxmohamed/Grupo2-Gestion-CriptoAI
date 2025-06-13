@@ -43,8 +43,11 @@ class CryptoMetrics(Base):
 class UserProfile(Base):
     __tablename__ = "user_profiles"
     
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(100), unique=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(String(100), unique=True, index=True, nullable=True)  # Ahora es opcional
+    nombre = Column(String(100), nullable=False)
+    apellido = Column(String(100), nullable=False)
+    telefono = Column(String(20), nullable=True)
     risk_tolerance = Column(String(10))  # conservative, moderate, aggressive
     investment_amount = Column(Float)
     investment_horizon = Column(String(20))  # short, medium, long
