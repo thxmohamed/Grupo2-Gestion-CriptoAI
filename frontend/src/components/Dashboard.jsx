@@ -47,7 +47,7 @@ export default function AdminMetricsPage() {
   return (
     <div style={{ padding: "32px", fontFamily: "Segoe UI, sans-serif", backgroundColor: "#f4f6f8" }}>
       <h1 style={{ fontSize: "28px", fontWeight: "bold", marginBottom: "32px", textAlign: "center" }}>
-        Dashboard de Métricas ({userId})
+        Top 20 Criptomonedas
       </h1>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

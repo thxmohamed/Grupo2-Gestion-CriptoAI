@@ -12,8 +12,8 @@ export default function AdminUserDashboard() {
       .catch(error => console.error("Error al obtener usuarios:", error));
   }, []);
 
-  const handleUserClick = (userId) => {
-    navigate(`/admin/user/${userId}`);
+  const handleUserClick = (user) => {
+    navigate(`/admin/user/${user.id}`, { state: { nombre: user.nombre, apellido: user.apellido } });
   };
 
   return (
@@ -26,7 +26,7 @@ export default function AdminUserDashboard() {
         {users.map(user => (
           <div
             key={user.id}
-            onClick={() => handleUserClick(user.user_id)}
+            onClick={() => handleUserClick(user)}
             style={{
               border: "1px solid #ccc",
               borderRadius: "8px",
