@@ -1,43 +1,53 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
-export function HomePage() {
+export default function AdminUserDashboard() {
+  const [users, setUsers] = useState([]);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    axios.get("http://localhost:8000/api/user-profiles/")
+      .then(response => setUsers(response.data))
+      .catch(error => console.error("Error al obtener usuarios:", error));
+  }, []);
+
+  const handleUserClick = (user) => {
+    navigate(`/admin/user/${user.id}`, { state: { nombre: user.nombre, apellido: user.apellido } });
+  };
+
   return (
-    <div className="homepage">
-      <h1>Tu asesor cripto con IA</h1>
-      <p className="subtitle">
-        CryptoAdvisor analiza el mercado por ti, optimiza tu portafolio y te envía
-        recomendaciones personalizadas por WhatsApp. Todo con inteligencia artificial, 24/7.
-      </p>
+    <div style={{ padding: "24px", fontFamily: "Arial, sans-serif" }}>
+      <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "24px" }}>
+        Vista Administrador - Usuarios
+      </h1>
 
-      <div className="features">
-        <div className="feature-card">
-          <h3>Análisis Automático</h3>
-          <p>Recolectamos y procesamos datos del mercado en tiempo real.</p>
-        </div>
-        <div className="feature-card">
-          <h3>Recomendaciones Personalizadas</h3>
-          <p>Adaptadas a tu perfil de riesgo y objetivos financieros.</p>
-        </div>
-        <div className="feature-card">
-          <h3>IA 24/7</h3>
-          <p>Siempre activa para detectar oportunidades y alertarte.</p>
-        </div>
-      </div>
-
-      <div className="cta-buttons">
-        <Link to="/dashboard">
-          <button className="primary-btn">Ir al Dashboard</button>
-        </Link>
-        <Link to="/historial">
-          <button className="secondary-btn">Ver Historial</button>
-        </Link>
-      </div>
-
-      <div className="placeholder-box">
-        <p>Gráfica de rendimiento / Demo próximamente</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "16px" }}>
+        {users.map(user => (
+          <div
+            key={user.id}
+            onClick={() => handleUserClick(user)}
+            style={{
+              border: "1px solid #ccc",
+              borderRadius: "8px",
+              padding: "16px",
+              width: "250px",
+              cursor: "pointer",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+            }}
+          >
+            <h2 style={{ fontSize: "18px", fontWeight: "600" }}>
+              {user.nombre} {user.apellido}
+            </h2>
+            <p style={{ fontSize: "14px", margin: "8px 0" }}>
+              💰 Inversión: ${user.investment_amount}
+            </p>
+            <p style={{ fontSize: "14px" }}>
+              {user.is_subscribed ? "✅ Suscrito" : "❌ No suscrito"}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
-export default HomePage;

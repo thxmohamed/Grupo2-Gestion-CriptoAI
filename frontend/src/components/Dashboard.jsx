@@ -1,81 +1,95 @@
-import React from "react";
-import { BarChart2, TrendingUp, Activity, PieChart } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { useParams, Link } from "react-router-dom";
 
-export function Dashboard() {
-  const monedas = [
-    { nombre: "Bitcoin", rentabilidad: "+8.5%", riesgo: "Moderado" },
-    { nombre: "Ethereum", rentabilidad: "+6.2%", riesgo: "Alto" },
-    { nombre: "Solana", rentabilidad: "+12.1%", riesgo: "Alto" },
-    { nombre: "Cardano", rentabilidad: "+3.4%", riesgo: "Bajo" },
-  ];
+export default function AdminMetricsPage() {
+  const { userId } = useParams();
+  const [metrics, setMetrics] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [rateLimitExceeded, setRateLimitExceeded] = useState(false);
+  const [expandedIndex, setExpandedIndex] = useState(null);
 
-  const metricas = [
-    { nombre: "Sharpe Ratio", valor: "1.87", icon: <TrendingUp color="green" size={24} /> },
-    { nombre: "Rentabilidad esperada", valor: "7.4%", icon: <BarChart2 color="blue" size={24} /> },
-    { nombre: "Volatilidad", valor: "2.3%", icon: <Activity color="orange" size={24} /> },
-  ];
+  useEffect(() => {
+    axios.get(`http://localhost:8000/api/economic-metrics/`)
+      .then(response => {
+        setMetrics(response.data.metrics);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Error al obtener métricas:", err);
+        if (err.response && err.response.status === 429) {
+          setRateLimitExceeded(true);
+        } else {
+          setError("No se pudieron cargar las métricas.");
+        }
+        setLoading(false);
+      });
+  }, [userId]);
 
-  const cardStyle = {
-    backgroundColor: "#fff",
-    padding: "16px",
-    marginBottom: "16px",
-    borderRadius: "8px",
-    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-    textAlign: "left",
+  const getRiskBadgeColor = (riskLevel) => {
+    switch (riskLevel) {
+      case "low": return "#4CAF50";
+      case "medium": return "#FFC107";
+      case "high": return "#F44336";
+      default: return "#757575";
+    }
   };
 
+  const toggleExpand = (index) => {
+    setExpandedIndex(expandedIndex === index ? null : index);
+  };
+
+  if (loading) return <p style={{ textAlign: "center" }}>Cargando métricas...</p>;
+  if (rateLimitExceeded) return <p style={{ color: "red", textAlign: "center" }}>⚠️ Límite de peticiones a CoinGecko alcanzado. Intenta nuevamente más tarde.</p>;
+  if (error) return <p style={{ textAlign: "center" }}>{error}</p>;
+
   return (
-    <div style={{ minHeight: "100vh", padding: "24px", background: "#f3f4f6" }}>
-      <h1 style={{ fontSize: "28px", fontWeight: "bold", marginBottom: "24px", textAlign: "center" }}>
-        Tu Panel Diario
+    <div style={{ padding: "32px", fontFamily: "Segoe UI, sans-serif", backgroundColor: "#f4f6f8" }}>
+      <h1 style={{ fontSize: "28px", fontWeight: "bold", marginBottom: "32px", textAlign: "center" }}>
+        Top 20 Criptomonedas
       </h1>
 
-      <div style={cardStyle}>
-        <h2 style={{ fontSize: "20px", fontWeight: "600", marginBottom: "8px" }}>
-          Recomendación de Hoy
-        </h2>
-        <p style={{ color: "#4b5563" }}>
-          Hoy te recomendamos distribuir tu portafolio en estas 4 monedas clave según tu perfil de riesgo.
-        </p>
-      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {metrics.map((coin, index) => (
+          <div key={index} style={{ backgroundColor: "#fff", padding: "16px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ margin: 0 }}>
+                {coin.name} ({coin.symbol})
+                <span style={{
+                  backgroundColor: getRiskBadgeColor(coin.risk_level),
+                  color: "white",
+                  padding: "4px 10px",
+                  borderRadius: "14px",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  marginLeft: "12px"
+                }}>
+                  {coin.risk_level.toUpperCase()}
+                </span>
+              </h2>
+              <button onClick={() => toggleExpand(index)} style={{ padding: "6px 12px", border: "none", backgroundColor: "#007BFF", color: "white", borderRadius: "6px", cursor: "pointer" }}>
+                {expandedIndex === index ? "Ocultar" : "Ver más"}
+              </button>
+            </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "16px", marginBottom: "24px" }}>
-        {monedas.map((m, i) => (
-          <div key={i} style={cardStyle}>
-            <h3 style={{ fontSize: "18px", fontWeight: "600", color: "#4338ca" }}>{m.nombre}</h3>
-            <p style={{ fontSize: "14px", color: "#6b7280" }}>Rentabilidad: {m.rentabilidad}</p>
-            <p style={{ fontSize: "14px", color: "#6b7280" }}>Riesgo: {m.riesgo}</p>
-          </div>
-        ))}
-      </div>
-
-      <div style={{
-        width: "100%",
-        maxWidth: "600px",
-        height: "200px",
-        margin: "0 auto 24px auto",
-        border: "2px dashed #d1d5db",
-        borderRadius: "12px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#9ca3af"
-      }}>
-        <PieChart size={24} style={{ marginRight: "8px" }} />
-        <span>Gráfico de portafolio próximamente</span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px" }}>
-        {metricas.map((m, i) => (
-          <div key={i} style={{ ...cardStyle, textAlign: "center" }}>
-            {m.icon}
-            <h4 style={{ fontWeight: "600", marginTop: "8px" }}>{m.nombre}</h4>
-            <p style={{ fontSize: "14px", color: "#6b7280" }}>{m.valor}</p>
+            {expandedIndex === index && (
+              <div style={{ marginTop: "12px", fontSize: "14px", lineHeight: "1.6" }}>
+                <p><strong>Precio actual:</strong> ${coin.current_price}</p>
+                <p><strong>Cap. de mercado:</strong> ${coin.market_cap.toLocaleString()}</p>
+                <p><strong>Cambio 24h:</strong> {coin.price_change_24h}%</p>
+                <p><strong>Retorno esperado:</strong> {coin.expected_return}%</p>
+                <p><strong>Volatilidad:</strong> {coin.volatility}%</p>
+                <p><strong>Score inversión:</strong> {coin.investment_score}</p>
+                <p><strong>Score riesgo:</strong> {coin.risk_score}</p>
+                <p><strong>Ratio de liquidez:</strong> {coin.liquidity_ratio}</p>
+                <p><strong>Sentimiento del mercado:</strong> {coin.market_sentiment}</p>
+                <p><strong>Estabilidad:</strong> {coin.stability_score}</p>
+              </div>
+            )}
           </div>
         ))}
       </div>
     </div>
   );
 }
-
-export default Dashboard;

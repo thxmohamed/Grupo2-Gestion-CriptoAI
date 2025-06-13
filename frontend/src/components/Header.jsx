@@ -59,10 +59,7 @@ export function Header() {
             <Home size={16} /> Inicio
           </Link>
           <Link to="/dashboard" style={mergeStyle("/dashboard")}>
-            <LayoutDashboard size={16} /> Dashboard
-          </Link>
-          <Link to="/historial" style={mergeStyle("/historial")}>
-            <History size={16} /> Historial
+            <LayoutDashboard size={16} /> Top 20
           </Link>
         </nav>
       </div>
