@@ -95,9 +95,13 @@ class PortfolioOptimizationRequest(BaseModel):
     investment_amount: float = 1000
     investment_horizon: str = "medium"  # short, medium, long
 
-# Modelo Pydantic simplificado para optimización de portfolio (solo user_id)
+# Modelo Pydantic simplificado para optimización de portfolio (solo id numérico)
 class PortfolioOptimizeRequest(BaseModel):
-    user_id: str
+    id: int
+
+# Modelo Pydantic para el request del reporte de portfolio
+class PortfolioReportRequest(BaseModel):
+    id: int
 
 # Dependency para obtener la sesión de base de datos
 def get_db():
@@ -653,17 +657,17 @@ async def delete_user_profile_by_id(profile_id: int, db: Session = Depends(get_d
 async def optimize_portfolio(request: PortfolioOptimizeRequest, db: Session = Depends(get_db)):
     """
     Endpoint para optimizar portfolio basado en métricas económicas y perfil del usuario
-    Solo requiere user_id, obtiene automáticamente el perfil del usuario de la BD
+    Solo requiere el id numérico, obtiene automáticamente el perfil del usuario de la BD
     Retorna las 4 mejores monedas con porcentajes de asignación y métricas completas
     """
     try:
-        # Buscar el perfil del usuario en la base de datos
-        user_profile = db.query(UserProfile).filter(UserProfile.user_id == request.user_id).first()
+        # Buscar el perfil del usuario en la base de datos por ID numérico
+        user_profile = db.query(UserProfile).filter(UserProfile.id == request.id).first()
         
         if not user_profile:
             raise HTTPException(
                 status_code=404, 
-                detail=f"No se encontró el perfil del usuario con ID: {request.user_id}"
+                detail=f"No se encontró el perfil del usuario con ID: {request.id}"
             )
         
         # Convertir el perfil del usuario a diccionario
@@ -690,3 +694,59 @@ async def optimize_portfolio(request: PortfolioOptimizeRequest, db: Session = De
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error optimizando portfolio: {str(e)}")
+
+@router.post("/generate-portfolio-report")
+async def generate_portfolio_report(request: PortfolioReportRequest, db: Session = Depends(get_db)):
+    """
+    Endpoint para generar un reporte explicativo en lenguaje natural del resultado de optimización de portfolio
+    usando Gemini AI. Toma un id numérico, obtiene la optimización de portfolio y genera un reporte detallado.
+    """
+    try:
+        # Buscar el perfil del usuario en la base de datos por ID numérico para validar que existe
+        user_profile = db.query(UserProfile).filter(UserProfile.id == request.id).first()
+        
+        if not user_profile:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No se encontró el perfil del usuario con ID: {request.id}"
+            )
+        
+        # Llamada interna al endpoint de optimización de portfolio
+        async with httpx.AsyncClient() as client:
+            url = "http://localhost:8000/api/optimize-portfolio"
+            payload = {"id": request.id}
+            
+            response = await client.post(url, json=payload, timeout=30.0)
+            response.raise_for_status()
+            portfolio_data = response.json()
+        
+        if not portfolio_data.get("success"):
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error obteniendo optimización de portfolio: {portfolio_data.get('message', 'Error desconocido')}"
+            )
+        
+        # Generar reporte explicativo usando Gemini AI
+        ai_report_result = communication_agent.generate_portfolio_report_with_ai(portfolio_data)
+        
+        if not ai_report_result.get('success'):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error generando reporte con IA: {ai_report_result.get('error', 'Error desconocido')}"
+            )
+        
+        return {
+            "success": True,
+            "profile_id": request.id,
+            "user_id": user_profile.user_id,  # Incluir también el user_id para referencia
+            "ai_report": ai_report_result['ai_report'],
+            "portfolio_summary": ai_report_result['portfolio_summary'],
+            "original_portfolio_data": portfolio_data,
+            "generated_at": ai_report_result['generated_at'],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generando reporte de portfolio: {str(e)}")

@@ -8,6 +8,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+import google.generativeai as genai
 
 class CommunicationAgent:
     """
@@ -22,7 +23,12 @@ class CommunicationAgent:
         self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
         self.email_user = os.getenv('EMAIL_USER', '')
         self.email_password = os.getenv('EMAIL_PASSWORD', '')
-    
+        
+        # Configurar Gemini
+        self.gemini_api_key = "AIzaSyDOX2Bd28ncFJaWZrWQY1wrw_SQWgc0-8U"
+        genai.configure(api_key=self.gemini_api_key)
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
     def register_subscription(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """Registrar nueva suscripción de usuario"""
         try:
@@ -396,3 +402,89 @@ class CommunicationAgent:
             return []
         finally:
             self.db.close()
+    
+    def generate_portfolio_report_with_ai(self, portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generar reporte explicativo del portfolio usando Gemini AI"""
+        try:
+            # Extraer datos del portfolio
+            portfolio_metrics = portfolio_data.get('portfolio_metrics', {})
+            portfolio_optimization = portfolio_data.get('portfolio_optimization', {})
+            user_profile = portfolio_data.get('user_profile', {})
+            
+            expected_return = portfolio_metrics.get('expected_return', 0)
+            risk_score = portfolio_metrics.get('risk_score', 0)
+            confidence_level = portfolio_metrics.get('confidence_level', 0)
+            
+            top_coins = portfolio_optimization.get('top_4_coins', [])
+            allocation_percentages = portfolio_optimization.get('allocation_percentages', {})
+            investment_amounts = portfolio_optimization.get('investment_amounts', {})
+            total_investment = portfolio_optimization.get('total_investment', 0)
+            
+            # Crear prompt para Gemini
+            prompt = f"""
+Eres un asesor financiero experto en criptomonedas. Analiza este portfolio de inversión y genera un reporte explicativo en español para un usuario de nivel {user_profile.get('risk_tolerance', 'moderate')} con horizonte de inversión {user_profile.get('investment_horizon', 'medium')}.
+
+DATOS DEL PORTFOLIO:
+- Monto total de inversión: ${total_investment:,.2f}
+- Retorno esperado: {expected_return}%
+- Score de riesgo: {risk_score}/100
+- Nivel de confianza: {confidence_level}%
+
+COMPOSICIÓN DEL PORTFOLIO:
+"""
+            
+            for coin in top_coins:
+                prompt += f"""
+- {coin['name']} ({coin['symbol']}):
+  * Asignación: {coin['allocation_percentage']}%
+  * Monto de inversión: ${investment_amounts.get(coin['symbol'], 0):,.2f}
+  * Precio actual: ${coin['current_price']:,.4f}
+  * Score de inversión: {coin['investment_score']}/100
+  * Score de riesgo: {coin['risk_score']}/100
+  * Retorno esperado: {coin['expected_return']}%
+  * Volatilidad: {coin['volatility']}%
+  * Score de estabilidad: {coin['stability_score']}/100
+  * Sentimiento del mercado: {coin['market_sentiment']}
+  * Cambio en 24h: {coin['price_change_24h']}%
+"""
+
+            prompt += """
+
+INSTRUCCIONES PARA EL REPORTE:
+1. Explica en lenguaje sencillo y profesional qué significa esta composición de portfolio
+2. Analiza los riesgos y oportunidades de cada criptomoneda
+3. Explica el significado del retorno esperado negativo si aplica
+4. Proporciona recomendaciones sobre la diversificación
+5. Incluye advertencias importantes sobre la volatilidad del mercado de criptomonedas
+6. Termina con un resumen ejecutivo de máximo 3 puntos clave
+7. Usa un tono profesional pero accesible
+8. Incluye emojis apropiados para hacer el reporte más visual
+9. Debe tener 100 palabras como máximo
+
+Debe estar estructurado con encabezados claros.
+"""
+
+            # Generar reporte con Gemini
+            response = self.model.generate_content(prompt)
+            ai_report = response.text
+            
+            return {
+                'success': True,
+                'ai_report': ai_report,
+                'generated_at': datetime.now().isoformat(),
+                'portfolio_summary': {
+                    'total_investment': total_investment,
+                    'expected_return': expected_return,
+                    'risk_score': risk_score,
+                    'confidence_level': confidence_level,
+                    'top_coins_count': len(top_coins),
+                    'user_profile': user_profile
+                }
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Error generando reporte con IA: {str(e)}',
+                'ai_report': None
+            }
