@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
+from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -53,6 +53,8 @@ class PortfolioRequestModel(BaseModel):
 # Modelos Pydantic para validación de UserProfile
 class UserProfileCreate(BaseModel):
     user_id: Optional[str] = None  # Ahora es opcional
+    email: EmailStr
+    password: str
     nombre: str
     apellido: str
     telefono: Optional[str] = None
@@ -61,6 +63,7 @@ class UserProfileCreate(BaseModel):
     investment_horizon: str = "medium"  # short, medium, long
     preferred_sectors: List[str] = []
     is_subscribed: bool = False
+
 
 class UserProfileUpdate(BaseModel):
     user_id: Optional[str] = None  # También opcional en updates
@@ -75,7 +78,8 @@ class UserProfileUpdate(BaseModel):
 
 class UserProfileResponse(BaseModel):
     id: int
-    user_id: Optional[str] = None  # También opcional en responses
+    user_id: Optional[str] = None
+    email: EmailStr
     nombre: str
     apellido: str
     telefono: Optional[str] = None
@@ -84,11 +88,13 @@ class UserProfileResponse(BaseModel):
     investment_horizon: str
     preferred_sectors: List[str]
     is_subscribed: bool
+    wallet_balance: float
     created_at: datetime
     updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
 
 # Modelo Pydantic para el request de optimización de portfolio
 class PortfolioOptimizationRequest(BaseModel):
@@ -104,6 +110,18 @@ class PortfolioOptimizeRequest(BaseModel):
 # Modelo Pydantic para el request del reporte de portfolio
 class PortfolioReportRequest(BaseModel):
     id: int
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+class DepositRequest(BaseModel):
+    amount: float
+
 
 # Dependency para obtener la sesión de base de datos
 def get_db():
@@ -379,61 +397,66 @@ async def get_economic_metrics():
 # CRUD ENDPOINTS FOR USER PROFILE
 # ================================
 
-@router.post("/user-profiles/", response_model=UserProfileResponse)
-async def create_user_profile(profile: UserProfileCreate, db: Session = Depends(get_db)):
+@router.post("/register", response_model=UserProfileResponse)
+async def register_user(profile: UserProfileCreate, db: Session = Depends(get_db)):
     """
-    Crear un nuevo perfil de usuario
+    Registro completo de usuario con información de perfil y credenciales
     """
     try:
-        # Verificar si el user_id ya existe (solo si se proporciona)
+        # Validar email único
+        if db.query(UserProfile).filter(UserProfile.email == profile.email).first():
+            raise HTTPException(status_code=400, detail="Este email ya está registrado")
+
+        # Validar user_id si se proporciona
         if profile.user_id:
-            existing_profile = db.query(UserProfile).filter(UserProfile.user_id == profile.user_id).first()
-            if existing_profile:
+            existing = db.query(UserProfile).filter(UserProfile.user_id == profile.user_id).first()
+            if existing:
                 raise HTTPException(status_code=400, detail="Ya existe un perfil para este user_id")
-        
-        # Convertir preferred_sectors a JSON string
-        preferred_sectors_json = json.dumps(profile.preferred_sectors)
-        
-        # Crear nuevo perfil
+
+        # Crear instancia del usuario
         db_profile = UserProfile(
-            user_id=profile.user_id,  # Puede ser None
+            user_id=profile.user_id,
+            email=profile.email,
             nombre=profile.nombre,
             apellido=profile.apellido,
             telefono=profile.telefono,
             risk_tolerance=profile.risk_tolerance,
             investment_amount=profile.investment_amount,
             investment_horizon=profile.investment_horizon,
-            preferred_sectors=preferred_sectors_json,
-            is_subscribed=profile.is_subscribed
+            preferred_sectors=json.dumps(profile.preferred_sectors),
+            is_subscribed=profile.is_subscribed,
+            wallet_balance=0.0
         )
-        
+
+        # Setear contraseña hasheada
+        db_profile.set_password(profile.password)
+
         db.add(db_profile)
         db.commit()
         db.refresh(db_profile)
-        
-        # Convertir JSON string back to list para response
-        response_profile = UserProfileResponse(
-            id=db_profile.id,
-            user_id=db_profile.user_id,
-            nombre=db_profile.nombre,
-            apellido=db_profile.apellido,
-            telefono=db_profile.telefono,
-            risk_tolerance=db_profile.risk_tolerance,
-            investment_amount=db_profile.investment_amount,
-            investment_horizon=db_profile.investment_horizon,
-            preferred_sectors=json.loads(db_profile.preferred_sectors) if db_profile.preferred_sectors else [],
-            is_subscribed=db_profile.is_subscribed,
-            created_at=db_profile.created_at,
-            updated_at=db_profile.updated_at
+
+        return UserProfileResponse(
+            id=profile.id,
+            user_id=profile.user_id,
+            email=profile.email,
+            nombre=profile.nombre,
+            apellido=profile.apellido,
+            telefono=profile.telefono,
+            risk_tolerance=profile.risk_tolerance,
+            investment_amount=profile.investment_amount,
+            investment_horizon=profile.investment_horizon,
+            preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
+            is_subscribed=profile.is_subscribed,
+            wallet_balance=profile.wallet_balance,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at
         )
-        
-        return response_profile
-        
-    except HTTPException:
-        raise
+
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error creando perfil de usuario: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error registrando usuario: {str(e)}")
+
 
 @router.get("/user-profiles/{user_id}", response_model=UserProfileResponse)
 async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
@@ -449,6 +472,7 @@ async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
         response_profile = UserProfileResponse(
             id=profile.id,
             user_id=profile.user_id,
+            email=profile.email,
             nombre=profile.nombre,
             apellido=profile.apellido,
             telefono=profile.telefono,
@@ -457,9 +481,11 @@ async def get_user_profile(user_id: str, db: Session = Depends(get_db)):
             investment_horizon=profile.investment_horizon,
             preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
             is_subscribed=profile.is_subscribed,
+            wallet_balance=profile.wallet_balance,
             created_at=profile.created_at,
             updated_at=profile.updated_at
         )
+
         
         return response_profile
         
@@ -481,6 +507,7 @@ async def get_all_user_profiles(skip: int = 0, limit: int = 100, db: Session = D
             response_profile = UserProfileResponse(
                 id=profile.id,
                 user_id=profile.user_id,
+                email=profile.email,
                 nombre=profile.nombre,
                 apellido=profile.apellido,
                 telefono=profile.telefono,
@@ -489,9 +516,11 @@ async def get_all_user_profiles(skip: int = 0, limit: int = 100, db: Session = D
                 investment_horizon=profile.investment_horizon,
                 preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
                 is_subscribed=profile.is_subscribed,
+                wallet_balance=profile.wallet_balance,
                 created_at=profile.created_at,
                 updated_at=profile.updated_at
             )
+
             response_profiles.append(response_profile)
         
         return response_profiles
@@ -526,6 +555,7 @@ async def update_user_profile(user_id: str, profile_update: UserProfileUpdate, d
         response_profile = UserProfileResponse(
             id=profile.id,
             user_id=profile.user_id,
+            email=profile.email,
             nombre=profile.nombre,
             apellido=profile.apellido,
             telefono=profile.telefono,
@@ -534,9 +564,11 @@ async def update_user_profile(user_id: str, profile_update: UserProfileUpdate, d
             investment_horizon=profile.investment_horizon,
             preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
             is_subscribed=profile.is_subscribed,
+            wallet_balance=profile.wallet_balance,
             created_at=profile.created_at,
             updated_at=profile.updated_at
         )
+
         
         return response_profile
         
@@ -578,6 +610,47 @@ async def check_user_profile_exists(user_id: str, db: Session = Depends(get_db))
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error verificando existencia de perfil: {str(e)}")
+    
+@router.post("/login")
+async def login_user(request: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(UserProfile).filter(UserProfile.email == request.email).first()
+    if not user or not user.check_password(request.password):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+
+    return {
+        "message": "Login exitoso",
+        "user_id": user.id,
+        "nombre": user.nombre,
+        "wallet_balance": user.wallet_balance
+    }
+
+@router.post("/wallet/deposit/{user_id}")
+async def deposit_wallet(user_id: int, request: DepositRequest, db: Session = Depends(get_db)):
+    user = db.query(UserProfile).filter(UserProfile.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if request.amount <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
+
+    user.wallet_balance += request.amount
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "Depósito exitoso",
+        "nuevo_saldo": user.wallet_balance
+    }
+
+@router.get("/wallet/balance/{user_id}")
+async def get_wallet_balance(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(UserProfile).filter(UserProfile.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {
+        "wallet_balance": user.wallet_balance
+    }
+
 
 # ================================
 # ENDPOINTS ALTERNATIVOS USANDO ID
@@ -597,6 +670,7 @@ async def get_user_profile_by_id(profile_id: int, db: Session = Depends(get_db))
         response_profile = UserProfileResponse(
             id=profile.id,
             user_id=profile.user_id,
+            email=profile.email,
             nombre=profile.nombre,
             apellido=profile.apellido,
             telefono=profile.telefono,
@@ -605,9 +679,11 @@ async def get_user_profile_by_id(profile_id: int, db: Session = Depends(get_db))
             investment_horizon=profile.investment_horizon,
             preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
             is_subscribed=profile.is_subscribed,
+            wallet_balance=profile.wallet_balance,
             created_at=profile.created_at,
             updated_at=profile.updated_at
         )
+
         
         return response_profile
         
@@ -652,6 +728,7 @@ async def update_user_profile_by_id(profile_id: int, profile_update: UserProfile
         response_profile = UserProfileResponse(
             id=profile.id,
             user_id=profile.user_id,
+            email=profile.email,
             nombre=profile.nombre,
             apellido=profile.apellido,
             telefono=profile.telefono,
@@ -660,9 +737,11 @@ async def update_user_profile_by_id(profile_id: int, profile_update: UserProfile
             investment_horizon=profile.investment_horizon,
             preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
             is_subscribed=profile.is_subscribed,
+            wallet_balance=profile.wallet_balance,
             created_at=profile.created_at,
             updated_at=profile.updated_at
         )
+
         
         return response_profile
         
@@ -790,3 +869,5 @@ async def generate_portfolio_report(request: PortfolioReportRequest, db: Session
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generando reporte de portfolio: {str(e)}")
+    
+
