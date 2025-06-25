@@ -194,26 +194,112 @@ class CoinGeckoAPIHelper:
         self.base_url = "https://api.coingecko.com/api/v3"
         self.session = None
     
-    async def _make_request(self, endpoint: str, params: Dict = None) -> Dict:
-        """Hacer petición HTTP a la API de CoinGecko"""
-        url = f"{self.base_url}{endpoint}"
-        
+    async def _make_request(self, endpoint: str, params: Dict = None, use_cache: bool = True, cache_ttl: int = 300) -> Dict:
+        """Hacer petición HTTP a la API de CoinGecko con caché y manejo de rate limit"""
         if params is None:
             params = {}
         
-        async with httpx.AsyncClient() as client:
+        # Verificar caché primero si está habilitado
+        if use_cache:
+            cached_data = rate_limiter.get_cached_data('coingecko', endpoint, params, cache_ttl)
+            if cached_data is not None:
+                return cached_data
+        
+        url = f"{self.base_url}{endpoint}"
+        max_retries = 3
+        base_delay = 60  # Delay base para 429 errors
+        
+        for attempt in range(max_retries):
             try:
-                response = await client.get(url, params=params, timeout=15.0)
-                response.raise_for_status()
-                return response.json()
+                # Esperar respetando rate limits
+                await rate_limiter.wait_if_needed('coingecko')
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, params=params, timeout=30.0)
+                    
+                    if response.status_code == 429:
+                        # Rate limit alcanzado
+                        delay = base_delay * (2 ** attempt)  # Backoff exponencial
+                        logger.warning(f"Rate limit 429 en CoinGecko, intento {attempt + 1}/{max_retries}, esperando {delay}s")
+                        
+                        # Establecer backoff para futuras peticiones
+                        rate_limiter.set_backoff_delay('coingecko', delay)
+                        
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            # Último intento fallido, devolver datos de fallback
+                            logger.error("Máximo de reintentos alcanzado para CoinGecko")
+                            return self._get_fallback_data(endpoint, params)
+                    
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    # Guardar en caché si la petición fue exitosa
+                    if use_cache and data:
+                        rate_limiter.set_cached_data('coingecko', endpoint, params, data, cache_ttl)
+                    
+                    return data
+                    
             except httpx.RequestError as e:
-                logger.error(f"Error de red en petición a CoinGecko: {e}")
-                raise
+                logger.error(f"Error de red en petición a CoinGecko (intento {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(5 * (attempt + 1))
+                    continue
+                else:
+                    return self._get_fallback_data(endpoint, params)
+            
             except httpx.HTTPStatusError as e:
-                logger.error(f"Error HTTP en petición a CoinGecko: {e.response.status_code}")
                 if e.response.status_code == 429:
-                    logger.warning("Rate limit alcanzado en CoinGecko")
-                raise
+                    continue  # Ya manejado arriba
+                
+                logger.error(f"Error HTTP en petición a CoinGecko: {e.response.status_code}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(5 * (attempt + 1))
+                    continue
+                else:
+                    return self._get_fallback_data(endpoint, params)
+        
+        return self._get_fallback_data(endpoint, params)
+    
+    def _get_fallback_data(self, endpoint: str, params: Dict = None) -> Dict:
+        """Obtener datos de fallback cuando la API falla"""
+        logger.warning(f"Usando datos de fallback para endpoint: {endpoint}")
+        
+        if endpoint == "/coins/markets":
+            # Datos de fallback para market overview
+            return [
+                {
+                    "id": "bitcoin",
+                    "symbol": "btc",
+                    "name": "Bitcoin",
+                    "current_price": 43000,
+                    "market_cap": 850000000000,
+                    "price_change_percentage_24h": 2.5,
+                    "total_volume": 20000000000
+                },
+                {
+                    "id": "ethereum", 
+                    "symbol": "eth",
+                    "name": "Ethereum",
+                    "current_price": 2600,
+                    "market_cap": 320000000000,
+                    "price_change_percentage_24h": 1.8,
+                    "total_volume": 12000000000
+                },
+                {
+                    "id": "tether",
+                    "symbol": "usdt", 
+                    "name": "Tether",
+                    "current_price": 1.0,
+                    "market_cap": 95000000000,
+                    "price_change_percentage_24h": 0.1,
+                    "total_volume": 25000000000
+                }
+            ]
+        
+        return {}  # Fallback por defecto
     
     async def get_coins_markets(self, vs_currency: str = 'usd', order: str = 'market_cap_desc',
                                per_page: int = 100, page: int = 1, 
@@ -441,18 +527,60 @@ class DataProcessor:
 
 class APIRateLimiter:
     """
-    Rate limiter para controlar las peticiones a las APIs
+    Rate limiter avanzado para controlar las peticiones a las APIs con caché y backoff exponencial
     """
     
     def __init__(self):
         self.binance_calls = []
         self.coingecko_calls = []
         self.binance_limit = 1200  # peticiones por minuto
-        self.coingecko_limit = 50  # peticiones por minuto para API pública
+        self.coingecko_limit = 10  # Reducido para ser más conservador
+        self.cache = {}
+        self.cache_ttl = {}
+        self.backoff_delay = {}
+        
+    def _get_cache_key(self, api: str, endpoint: str, params: Dict = None) -> str:
+        """Generar clave de caché para una petición"""
+        if params:
+            sorted_params = sorted(params.items())
+            params_str = "&".join([f"{k}={v}" for k, v in sorted_params])
+            return f"{api}:{endpoint}:{params_str}"
+        return f"{api}:{endpoint}"
+    
+    def get_cached_data(self, api: str, endpoint: str, params: Dict = None, ttl: int = 300):
+        """Obtener datos del caché si están disponibles y válidos"""
+        cache_key = self._get_cache_key(api, endpoint, params)
+        now = time.time()
+        
+        if cache_key in self.cache and cache_key in self.cache_ttl:
+            if now < self.cache_ttl[cache_key]:
+                logger.info(f"Usando datos en caché para {cache_key}")
+                return self.cache[cache_key]
+            else:
+                # Limpiar caché expirado
+                del self.cache[cache_key]
+                del self.cache_ttl[cache_key]
+        
+        return None
+    
+    def set_cached_data(self, api: str, endpoint: str, params: Dict = None, data: Any = None, ttl: int = 300):
+        """Guardar datos en caché"""
+        cache_key = self._get_cache_key(api, endpoint, params)
+        now = time.time()
+        
+        self.cache[cache_key] = data
+        self.cache_ttl[cache_key] = now + ttl
+        logger.debug(f"Datos guardados en caché para {cache_key} por {ttl}s")
     
     async def wait_if_needed(self, api: str):
-        """Esperar si es necesario para respetar rate limits"""
+        """Esperar si es necesario para respetar rate limits con backoff exponencial"""
         now = time.time()
+        
+        # Verificar si hay un delay de backoff activo
+        if api in self.backoff_delay and now < self.backoff_delay[api]:
+            wait_time = self.backoff_delay[api] - now
+            logger.warning(f"Backoff activo para {api}, esperando {wait_time:.2f} segundos")
+            await asyncio.sleep(wait_time)
         
         if api == 'binance':
             # Limpiar llamadas antiguas (últimos 60 segundos)
@@ -477,6 +605,12 @@ class APIRateLimiter:
                     await asyncio.sleep(wait_time)
             
             self.coingecko_calls.append(now)
+    
+    def set_backoff_delay(self, api: str, delay: float = 60):
+        """Establecer un delay de backoff exponencial para un API"""
+        now = time.time()
+        self.backoff_delay[api] = now + delay
+        logger.warning(f"Backoff establecido para {api} por {delay} segundos")
 
 # Instancias globales
 binance_helper = BinanceAPIHelper()

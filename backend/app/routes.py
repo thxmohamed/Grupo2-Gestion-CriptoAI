@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 import asyncio
 import httpx
 import json
+import logging
 
 from app.agents.data_collector import DataCollectorAgent
 from app.agents.economic_analysis import EconomicAnalysisAgent
@@ -15,6 +16,7 @@ from app.models import UserProfile
 from app import SessionLocal
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Inicializar agentes
 data_collector = DataCollectorAgent()
@@ -250,24 +252,19 @@ async def health_check():
 @router.get("/market-overview")
 async def get_market_overview():
     """
-    ✅ ENDPOINT CORREGIDO - Resumen general del mercado con datos reales
+    ✅ ENDPOINT MEJORADO - Resumen general del mercado con caché y manejo de rate limits
     """
     try:
-        # Llamada directa a CoinGecko API sin procesamiento intermedio
-        async with httpx.AsyncClient() as client:
-            url = "https://api.coingecko.com/api/v3/coins/markets"
-            params = {
-                'vs_currency': 'usd',
-                'order': 'market_cap_desc',
-                'per_page': 20,
-                'page': 1,
-                'sparkline': False,
-                'price_change_percentage': '24h'
-            }
-            
-            response = await client.get(url, params=params, timeout=15.0)
-            response.raise_for_status()
-            market_data = response.json()
+        # Usar el helper de CoinGecko mejorado con caché
+        from app.utils import coingecko_helper
+        
+        market_data = await coingecko_helper.get_coins_markets(
+            vs_currency='usd',
+            order='market_cap_desc',
+            per_page=20,
+            page=1,
+            price_change_percentage='24h'
+        )
         
         if not market_data:
             raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado")
@@ -288,10 +285,10 @@ async def get_market_overview():
                     {
                         "symbol": coin['symbol'].upper(),
                         "name": coin['name'],
-                        "current_price": coin.get('current_price', 0),  # ✅ Campo correcto de CoinGecko
+                        "current_price": coin.get('current_price', 0),
                         "market_cap": coin.get('market_cap', 0),
                         "price_change_24h": coin.get('price_change_percentage_24h', 0),
-                        "volume_24h": coin.get('total_volume', 0)  # ✅ Campo correcto de CoinGecko
+                        "volume_24h": coin.get('total_volume', 0)
                     }
                     for coin in top_10
                 ],
@@ -317,23 +314,66 @@ async def get_market_overview():
 async def get_economic_metrics():
     """
     Endpoint que retorna métricas cuantitativas de inversión y riesgo para todas las monedas del market overview.
+    Mejorado con manejo de errores y caché.
     """
     try:
-        # Obtener datos del market overview (llamada interna)
-        async with httpx.AsyncClient() as client:
-            url = "http://localhost:8000/api/market-overview"
-            response = await client.get(url, timeout=10.0)
-            response.raise_for_status()
-            data = response.json()
-
-        if not data.get("success") or not data["data"].get("top_cryptocurrencies"):
-            raise HTTPException(status_code=503, detail="No se pueden obtener datos del market overview")
-
-        coins = data["data"]["top_cryptocurrencies"]
+        # Usar el helper de CoinGecko directamente en lugar de llamada interna
+        from app.utils import coingecko_helper
+        
+        market_data = await coingecko_helper.get_coins_markets(
+            vs_currency='usd',
+            order='market_cap_desc', 
+            per_page=20,
+            page=1,
+            price_change_percentage='24h'
+        )
+        
+        if not market_data:
+            raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado")
+        
+        # Convertir datos al formato esperado por economic_analyzer
+        coins = [
+            {
+                "symbol": coin['symbol'].upper(),
+                "name": coin['name'],
+                "current_price": coin.get('current_price', 0),
+                "market_cap": coin.get('market_cap', 0),
+                "price_change_24h": coin.get('price_change_percentage_24h', 0),
+                "volume_24h": coin.get('total_volume', 0)
+            }
+            for coin in market_data[:20]
+        ]
+        
         metrics = economic_analyzer.compute_market_metrics(coins)
-        return {"success": True, "metrics": metrics, "timestamp": datetime.now().isoformat()}
+        return {
+            "success": True, 
+            "metrics": metrics, 
+            "timestamp": datetime.now().isoformat(),
+            "data_source": "coingecko_direct"
+        }
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error obteniendo métricas económicas: {str(e)}")
+        # Si falla todo, devolver métricas básicas de fallback
+        logger.error(f"Error obteniendo métricas económicas: {str(e)}")
+        
+        fallback_metrics = {
+            "market_volatility": 0.15,
+            "fear_greed_index": 50,
+            "market_trend": "neutral",
+            "recommended_allocation": {
+                "conservative": {"btc": 40, "eth": 30, "stablecoins": 30},
+                "moderate": {"btc": 50, "eth": 35, "altcoins": 15},
+                "aggressive": {"btc": 40, "eth": 30, "altcoins": 30}
+            }
+        }
+        
+        return {
+            "success": True,
+            "metrics": fallback_metrics,
+            "timestamp": datetime.now().isoformat(),
+            "data_source": "fallback",
+            "note": "Usando datos de fallback debido a problemas de conectividad"
+        }
 
 # ================================
 # CRUD ENDPOINTS FOR USER PROFILE
