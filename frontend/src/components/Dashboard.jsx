@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import apiClient from "../http-common";
 import { useParams, Link } from "react-router-dom";
 
 export default function AdminMetricsPage() {
@@ -11,7 +11,7 @@ export default function AdminMetricsPage() {
   const [expandedIndex, setExpandedIndex] = useState(null);
 
   useEffect(() => {
-    axios.get(`http://localhost:8000/api/economic-metrics/`)
+    apiClient.get(`/api/economic-metrics/`)
       .then(response => {
         setMetrics(response.data.metrics);
         setLoading(false);

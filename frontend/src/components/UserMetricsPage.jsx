@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import apiClient from "../http-common";
 import { useParams, Link, useLocation } from "react-router-dom";
 import {
   PieChart,
@@ -31,10 +31,10 @@ export default function UserMetricsPage() {
 
   useEffect(() => {
     setLoading(true);
-    axios.post(`http://localhost:8000/api/optimize-portfolio`, { id: userId })
+    apiClient.post(`/api/optimize-portfolio`, { id: userId })
       .then(response => {
         setPortfolio(response.data);
-        return axios.post("http://127.0.0.1:8000/api/generate-portfolio-report", { id: userId });
+        return apiClient.post("/api/generate-portfolio-report", { id: userId });
       })
       .then(reportResponse => {
         setAiReport(reportResponse.data.ai_report);

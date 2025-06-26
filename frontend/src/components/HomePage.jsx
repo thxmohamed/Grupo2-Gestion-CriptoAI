@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import apiClient from "../http-common";
 import { useNavigate } from "react-router-dom";
 
 export default function AdminUserDashboard() {
@@ -7,7 +7,7 @@ export default function AdminUserDashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    axios.get("http://localhost:8000/api/user-profiles/")
+    apiClient.get("/api/user-profiles/")
       .then(response => setUsers(response.data))
       .catch(error => console.error("Error al obtener usuarios:", error));
   }, []);
