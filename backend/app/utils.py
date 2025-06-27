@@ -13,6 +13,9 @@ import os
 from binance import Client as BinanceClient
 from binance.exceptions import BinanceAPIException, BinanceOrderException
 import logging
+import httpx
+import smtplib
+from email.message import EmailMessage
 
 logger = logging.getLogger(__name__)
 
@@ -611,6 +614,36 @@ class APIRateLimiter:
         now = time.time()
         self.backoff_delay[api] = now + delay
         logger.warning(f"Backoff establecido para {api} por {delay} segundos")
+
+
+def send_email(to_email: str, subject: str, body: str, html: bool = False) -> dict:
+    EMAIL_HOST = os.getenv("EMAIL_HOST")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", 465))
+    EMAIL_USERNAME = os.getenv("EMAIL_USERNAME")
+    EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+    EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "CryptoAdvisor")
+
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = f"{EMAIL_FROM_NAME} <{EMAIL_USERNAME}>"
+        msg["To"] = to_email
+
+        if html:
+            msg.set_content("Este mensaje requiere un cliente que soporte HTML.")
+            msg.add_alternative(body, subtype="html")
+        else:
+            msg.set_content(body)
+
+        with smtplib.SMTP_SSL(EMAIL_HOST, EMAIL_PORT) as smtp:
+            smtp.login(EMAIL_USERNAME, EMAIL_PASSWORD)
+            smtp.send_message(msg)
+
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 
 # Instancias globales
 binance_helper = BinanceAPIHelper()

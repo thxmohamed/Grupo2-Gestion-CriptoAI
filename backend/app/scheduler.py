@@ -7,6 +7,7 @@ import logging
 from app.agents.data_collector import DataCollectorAgent
 from app.agents.economic_analysis import EconomicAnalysisAgent
 from app.agents.communication import CommunicationAgent
+from app import SessionLocal
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -92,6 +93,17 @@ class SchedulerService:
             
         except Exception as e:
             logger.error(f"Error en limpieza programada de datos: {e}")
+
+
+    async def send_email_reports_job(self):
+        try:
+            db = SessionLocal()
+            await self.communication_agent.send_scheduled_email_reports(db)
+            db.close()
+        except Exception as e:
+            logger.error(f"Error en envío programado de reportes por correo: {e}")
+
+
     
     def start_scheduler(self):
         """Iniciar el programador de tareas"""
@@ -104,7 +116,16 @@ class SchedulerService:
             name='Actualizar datos de criptomonedas',
             replace_existing=True
         )
-        
+
+        # Enviar reportes por correo según frecuencia
+        self.scheduler.add_job(
+            self.send_email_reports_job,
+            CronTrigger(hour=8, minute=0),
+            id="send_email_reports_job",
+            name="Send portfolio reports via email based on user frequency",
+            replace_existing=True
+        )
+
         # Enviar notificaciones diarias a las 9:00 AM
         self.scheduler.add_job(
             self.send_daily_notifications_job,

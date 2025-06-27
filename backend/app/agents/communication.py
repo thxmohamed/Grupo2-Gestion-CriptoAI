@@ -9,6 +9,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 import google.generativeai as genai
+from app.utils import send_email
+import httpx
+
 
 class CommunicationAgent:
     """
@@ -488,3 +491,87 @@ Debe estar estructurado con encabezados claros.
                 'error': f'Error generando reporte con IA: {str(e)}',
                 'ai_report': None
             }
+    
+
+    async def send_scheduled_email_reports(self, db: Session):
+        """
+        Enviar reportes por correo electrónico según frecuencia y suscripción.
+        """
+        hoy = datetime.utcnow()
+        dia_semana = hoy.strftime('%A').lower()  # 'monday', etc.
+        dia_mes = hoy.day
+
+        subscripciones = db.query(Subscription).filter(Subscription.is_active == True).all()
+
+        for sub in subscripciones:
+            if not sub.email:
+                continue
+
+            # Validar si corresponde enviar hoy según frecuencia
+            enviar = (
+                sub.frequency == "daily" or
+                (sub.frequency == "weekly" and dia_semana == "monday") or
+                (sub.frequency == "monthly" and dia_mes == 1)
+            )
+
+            if not enviar:
+                continue
+
+            # Obtener perfil asociado por user_id
+            user_profile = db.query(UserProfile).filter(UserProfile.user_id == sub.user_id).first()
+            if not user_profile:
+                continue
+
+            try:
+                # Llamar al endpoint que genera el reporte de portafolio
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        "http://localhost:8000/api/generate-portfolio-report",
+                        json={"id": user_profile.id},
+                        timeout=30.0
+                    )
+                    resp.raise_for_status()
+                    result = resp.json()
+
+                if result.get("success"):
+                    # Construir cuerpo del correo en HTML
+                    html_body = f"""
+                    <html>
+                      <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+                        <p>Hola <strong>{user_profile.nombre}</strong>,</p>
+
+                        <p>Aquí tienes tu reporte <strong>diario</strong> de inversión generado por <strong>CryptoAdvisor</strong>:</p>
+
+                        <h3>📊 Análisis del Portafolio</h3>
+                        <pre style="white-space: pre-wrap;">{result['ai_report']}</pre>
+
+                        <h3>📋 Resumen del Portafolio</h3>
+                        <ul>
+                          <li><strong>Inversión Total:</strong> ${result['portfolio_summary']['total_investment']}</li>
+                          <li><strong>Retorno Esperado:</strong> {result['portfolio_summary']['expected_return']}%</li>
+                          <li><strong>Riesgo:</strong> {result['portfolio_summary']['risk_score']}/100</li>
+                          <li><strong>Confianza:</strong> {result['portfolio_summary']['confidence_level']}%</li>
+                          <li><strong>Activos Recomendados:</strong> {result['portfolio_summary']['top_coins_count']} monedas</li>
+                        </ul>
+
+                        <p style="color: #666; font-size: 0.9em;">🕒 Generado el {result['generated_at']}</p>
+                      </body>
+                    </html>
+                    """
+
+                    # Enviar el correo con formato HTML
+                    result_email = send_email(
+                        to_email=sub.email,
+                        subject="📈 Tu reporte de inversión - CryptoAdvisor",
+                        body=html_body,
+                        html=True
+                    )
+
+                    if not result_email.get("success"):
+                        print(f"[❌] Error al enviar email a {sub.email}: {result_email.get('error')}")
+                    else:
+                        print(f"[✅] Correo enviado a {sub.email}")
+
+            except Exception as e:
+                print(f"[❌] Error al procesar {sub.email}: {e}")
+

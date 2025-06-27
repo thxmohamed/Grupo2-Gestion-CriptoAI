@@ -436,7 +436,7 @@ async def register_user(profile: UserProfileCreate, db: Session = Depends(get_db
         db.refresh(db_profile)
 
         return UserProfileResponse(
-            id=profile.id,
+            id=db_profile.id,
             user_id=profile.user_id,
             email=profile.email,
             nombre=profile.nombre,
@@ -870,4 +870,19 @@ async def generate_portfolio_report(request: PortfolioReportRequest, db: Session
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generando reporte de portfolio: {str(e)}")
     
+
+@router.post("/admin/send-email-reports")
+async def trigger_email_reports():
+    """
+    Endpoint manual para enviar reportes por correo a los usuarios según su frecuencia.
+    Útil para pruebas o ejecución forzada desde frontend.
+    """
+    try:
+        db = SessionLocal()
+        agent = CommunicationAgent()
+        await agent.send_scheduled_email_reports(db)
+        db.close()
+        return {"success": True, "message": "Reportes enviados manualmente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error enviando reportes: {str(e)}")
 
