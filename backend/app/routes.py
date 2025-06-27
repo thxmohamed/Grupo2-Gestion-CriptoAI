@@ -327,6 +327,62 @@ async def get_market_overview():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo resumen del mercado: {str(e)}")
+    
+@router.get("/market-top-5")
+async def get_market_top_5():
+    """
+    Retorna el Top 5 de criptomonedas con mayor capitalización del mercado.
+    """
+    try:
+        from app.utils import coingecko_helper
+
+        market_data = await coingecko_helper.get_coins_markets(
+            vs_currency='usd',
+            order='market_cap_desc',
+            per_page=5,  # 🔧 Solo pedimos 5 directamente
+            page=1,
+            price_change_percentage='24h'
+        )
+
+        if not market_data:
+            raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado")
+
+        total_market_cap = sum(coin.get('market_cap', 0) for coin in market_data)
+        avg_price_change = sum(coin.get('price_change_percentage_24h', 0) for coin in market_data) / len(market_data)
+
+        bullish_count = len([coin for coin in market_data if coin.get('price_change_percentage_24h', 0) > 0])
+        bearish_count = len(market_data) - bullish_count
+
+        return {
+            "success": True,
+            "data": {
+                "top_5_cryptocurrencies": [
+                    {
+                        "symbol": coin['symbol'].upper(),
+                        "name": coin['name'],
+                        "current_price": coin.get('current_price', 0),
+                        "market_cap": coin.get('market_cap', 0),
+                        "price_change_24h": coin.get('price_change_percentage_24h', 0),
+                        "volume_24h": coin.get('total_volume', 0)
+                    }
+                    for coin in market_data
+                ],
+                "market_summary": {
+                    "total_market_cap_top5": total_market_cap,
+                    "average_price_change_24h": round(avg_price_change, 2),
+                    "bullish_coins": bullish_count,
+                    "bearish_coins": bearish_count,
+                    "market_sentiment": "bullish" if bullish_count > bearish_count else "bearish" if bearish_count > bullish_count else "neutral"
+                }
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo el Top 5 del mercado: {str(e)}")
+
 
 @router.get("/economic-metrics")
 async def get_economic_metrics():
