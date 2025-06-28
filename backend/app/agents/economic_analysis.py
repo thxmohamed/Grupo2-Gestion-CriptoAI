@@ -17,31 +17,82 @@ class EconomicAnalysisAgent:
         self.db = SessionLocal()
     
     def calculate_rsi(self, prices: List[float], period: int = 14) -> float:
-        """Calcular RSI (Relative Strength Index)"""
+        """
+        Calcula el RSI (Relative Strength Index) siguiendo el planteamiento matemático
+        con promedios suavizados exponencialmente (SMMA).
+
+        Args:
+            prices (List[float]): Una lista de precios de cierre.
+            period (int): El período para el cálculo del RSI (N en la fórmula matemática).
+                          Por defecto es 14.
+
+        Returns:
+            float: El valor del RSI. Retorna 50.0 si no hay suficientes datos
+                   para el primer cálculo del promedio, y 100.0 si las pérdidas
+                   promedio son cero.
+        """
         if len(prices) < period + 1:
-            return 50.0  # Valor neutral si no hay suficientes datos
-        
+            return 50.0  # Valor neutral si no hay suficientes datos para el primer cálculo
+
+        # Calcula las ganancias (U) y pérdidas (D) para cada período
         deltas = np.diff(prices)
         gains = np.where(deltas > 0, deltas, 0)
         losses = np.where(deltas < 0, -deltas, 0)
-        
-        avg_gains = np.mean(gains[-period:])
-        avg_losses = np.mean(losses[-period:])
-        
-        if avg_losses == 0:
-            return 100.0
-        
-        rs = avg_gains / avg_losses
+
+        # Inicializa las medias suavizadas (SMMA)
+        # Para el primer período (t <= N), se usa un promedio simple
+        initial_gains = np.mean(gains[:period])
+        initial_losses = np.mean(losses[:period])
+
+        # Si las pérdidas iniciales son 0, RS es infinito, RSI es 100
+        if initial_losses == 0:
+            current_avg_gains = initial_gains
+            current_avg_losses = 0.0 # Aseguramos que sea 0.0 para el cálculo posterior
+        else:
+            current_avg_gains = initial_gains
+            current_avg_losses = initial_losses
+
+        # Aplica la media móvil exponencial suavizada para t > N
+        for i in range(period, len(gains)):
+            current_avg_gains = ((period - 1) * current_avg_gains + gains[i]) / period
+            current_avg_losses = ((period - 1) * current_avg_losses + losses[i]) / period
+
+        # Calcula la fuerza relativa (RS)
+        if current_avg_losses == 0:
+            return 100.0  # Si las pérdidas suavizadas son 0, RSI es 100
+
+        rs = current_avg_gains / current_avg_losses
+
+        # Finalmente, calcula el RSI
         rsi = 100 - (100 / (1 + rs))
         return rsi
     
     def calculate_volatility(self, prices: List[float]) -> float:
-        """Calcular volatilidad basada en desviación estándar"""
+        """
+        Calcula la volatilidad basada en la desviación estándar de los log-retornos,
+        siguiendo el planteamiento matemático.
+
+        Args:
+            prices (List[float]): Una lista de precios de cierre.
+
+        Returns:
+            float: La volatilidad calculada como el porcentaje de la desviación estándar
+                   de los log-retornos. Retorna 0.0 si no hay suficientes datos.
+        """
         if len(prices) < 2:
-            return 0.0
+            return 0.0 # No se puede calcular el retorno con menos de 2 precios
+
+        # Calcula los log-retornos
+        # r(t) = ln(P(t) / P(t-1))
+        # np.log(prices[1:] / prices[:-1]) calcula ln(P(t)) para t de 1 a N
+        # dividido por ln(P(t-1)) para t de 1 a N
+        log_returns = np.diff(np.log(prices))
         
-        returns = np.diff(prices) / prices[:-1]
-        return float(np.std(returns) * 100)
+        # Calcula la desviación estándar de los log-retornos
+        # Multiplica por 100 para expresarlo como porcentaje, si así se desea
+        volatility = float(np.std(log_returns) * 100)
+        
+        return volatility
     
     def calculate_moving_averages(self, prices: List[float]) -> Dict[str, float]:
         """Calcular promedios móviles"""
@@ -166,7 +217,7 @@ class EconomicAnalysisAgent:
                 # Para este ejemplo, usamos datos simulados de precios históricos
                 # En implementación real, necesitarías obtener datos históricos
                 historical_prices = [crypto.current_price * (1 + np.random.normal(0, 0.02)) 
-                                   for _ in range(30)]
+                                   for _ in range(30)] #NO SE OBTIENE HISTÓRICOS, SIMULADOS
                 
                 volatility = self.calculate_volatility(historical_prices)
                 rsi = self.calculate_rsi(historical_prices)
@@ -225,7 +276,9 @@ class EconomicAnalysisAgent:
     
     def get_user_relevant_metrics(self, user_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Obtener métricas relevantes para un usuario específico"""
+        print("Obteniendo métricas relevantes para el usuario...")
         try:
+            
             risk_tolerance = user_data.get('risk_tolerance', 'moderate')
             investment_horizon = user_data.get('investment_horizon', 'medium')
             
@@ -233,7 +286,7 @@ class EconomicAnalysisAgent:
             query = self.db.query(Cryptocurrency, CryptoMetrics).join(
                 CryptoMetrics, Cryptocurrency.symbol == CryptoMetrics.symbol
             )
-            
+
             # Filtrar por nivel de riesgo
             if risk_tolerance == 'conservative':
                 query = query.filter(CryptoMetrics.risk_level.in_(['low', 'medium']))
@@ -253,7 +306,6 @@ class EconomicAnalysisAgent:
                 )
             
             results = query.limit(20).all()  # Obtener top 20 para que el optimizador elija
-            
             return [
                 {
                     'symbol': crypto.symbol,
