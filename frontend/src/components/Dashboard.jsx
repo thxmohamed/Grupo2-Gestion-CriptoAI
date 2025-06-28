@@ -265,7 +265,6 @@ export default function CryptoDashboard() {
         {/* Hero Section */}
         <div style={{
           textAlign: 'center',
-          marginBottom: '60px',
           padding: '40px 0'
         }}>
           <h1 
@@ -294,85 +293,7 @@ export default function CryptoDashboard() {
             evaluación de riesgos y recomendaciones de inversión en tiempo real.
           </p>
 
-          {/* Market Summary */}
-          <div className="grid grid-3" style={{ marginBottom: '40px' }}>
-            <div className="card animate-fadeInUp" style={{
-              padding: '30px',
-              textAlign: 'center',
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.05) 100%)',
-              border: '1px solid rgba(16, 185, 129, 0.2)'
-            }}>
-              <div style={{
-                fontSize: '48px',
-                fontWeight: '900',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                marginBottom: '12px'
-              }}>
-                {metrics.length}
-              </div>
-              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>
-                Criptomonedas
-              </h3>
-              <p style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                Analizadas en tiempo real
-              </p>
-            </div>
 
-            <div className="card animate-fadeInUp" style={{
-              padding: '30px',
-              textAlign: 'center',
-              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%)',
-              border: '1px solid rgba(59, 130, 246, 0.2)',
-              animationDelay: '0.1s'
-            }}>
-              <div style={{
-                fontSize: '32px',
-                fontWeight: '900',
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                marginBottom: '12px'
-              }}>
-                ${metrics.reduce((sum, coin) => sum + coin.market_cap, 0).toLocaleString()}
-              </div>
-              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>
-                Cap. Mercado Total
-              </h3>
-              <p style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                Valoración combinada
-              </p>
-            </div>
-
-            <div className="card animate-fadeInUp" style={{
-              padding: '30px',
-              textAlign: 'center',
-              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.05) 100%)',
-              border: '1px solid rgba(139, 92, 246, 0.2)',
-              animationDelay: '0.2s'
-            }}>
-              <div style={{
-                fontSize: '48px',
-                fontWeight: '900',
-                background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                marginBottom: '12px'
-              }}>
-                AI
-              </div>
-              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>
-                Análisis IA
-              </h3>
-              <p style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                Predicciones avanzadas
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Controls */}
