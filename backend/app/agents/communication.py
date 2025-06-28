@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 import google.generativeai as genai
-from app.utils import send_email
+from app.utils import send_telegram_message
 import httpx
 
 
@@ -33,23 +33,22 @@ class CommunicationAgent:
         self.model = genai.GenerativeModel('gemini-1.5-flash')
         
     def register_subscription(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Registrar nueva suscripción de usuario"""
+        """Registrar suscripción para recibir reportes por Telegram"""
         try:
-            # Verificar si ya existe suscripción
             existing_sub = self.db.query(Subscription).filter(
                 Subscription.user_id == user_data['user_id']
             ).first()
-            
+
             if existing_sub:
                 # Actualizar suscripción existente
                 existing_sub.email = user_data.get('email', existing_sub.email)
                 existing_sub.phone = user_data.get('phone', existing_sub.phone)
                 existing_sub.notification_type = user_data.get('notification_type', existing_sub.notification_type)
                 existing_sub.frequency = user_data.get('frequency', existing_sub.frequency)
-                existing_sub.is_active = True
+                existing_sub.telegram_pending = True
+                existing_sub.is_active = False
                 existing_sub.updated_at = datetime.now()
-                
-                message = "Suscripción actualizada exitosamente"
+                message = "Suscripción actualizada. Abre el bot de Telegram y escribe /start para activarla."
             else:
                 # Crear nueva suscripción
                 subscription = Subscription(
@@ -58,19 +57,22 @@ class CommunicationAgent:
                     phone=user_data.get('phone'),
                     notification_type=user_data.get('notification_type', 'email'),
                     frequency=user_data.get('frequency', 'daily'),
-                    is_active=True
+                    telegram_pending=True,
+                    is_active=False
                 )
                 self.db.add(subscription)
-                message = "Suscripción creada exitosamente"
-            
-            # Crear o actualizar perfil de usuario
+                message = "Suscripción iniciada. Abre el bot de Telegram y escribe /start para activarla."
+
+            # Verificar si existe el perfil de usuario
             user_profile = self.db.query(UserProfile).filter(
                 UserProfile.user_id == user_data['user_id']
             ).first()
-            
+
             if not user_profile:
                 user_profile = UserProfile(
                     user_id=user_data['user_id'],
+                    email=user_data.get('email'),
+                    telefono=user_data.get('phone'),
                     risk_tolerance=user_data.get('risk_tolerance', 'moderate'),
                     investment_amount=user_data.get('investment_amount', 1000),
                     investment_horizon=user_data.get('investment_horizon', 'medium'),
@@ -79,22 +81,26 @@ class CommunicationAgent:
                 )
                 self.db.add(user_profile)
             else:
+                # Actualizar perfil
+                user_profile.email = user_data.get('email', user_profile.email)
+                user_profile.telefono = user_data.get('phone', user_profile.telefono)
                 user_profile.risk_tolerance = user_data.get('risk_tolerance', user_profile.risk_tolerance)
                 user_profile.investment_amount = user_data.get('investment_amount', user_profile.investment_amount)
                 user_profile.investment_horizon = user_data.get('investment_horizon', user_profile.investment_horizon)
-                user_profile.preferred_sectors = json.dumps(user_data.get('preferred_sectors', 
-                                                          json.loads(user_profile.preferred_sectors or '[]')))
+                user_profile.preferred_sectors = json.dumps(
+                    user_data.get('preferred_sectors', json.loads(user_profile.preferred_sectors or '[]'))
+                )
                 user_profile.is_subscribed = True
                 user_profile.updated_at = datetime.now()
-            
+
             self.db.commit()
-            
+
             return {
                 'success': True,
                 'message': message,
                 'subscription_id': existing_sub.id if existing_sub else subscription.id
             }
-            
+
         except Exception as e:
             self.db.rollback()
             return {
@@ -103,6 +109,8 @@ class CommunicationAgent:
             }
         finally:
             self.db.close()
+
+
     
     def unsubscribe_user(self, user_id: str) -> Dict[str, Any]:
         """Cancelar suscripción de usuario"""
@@ -493,18 +501,21 @@ Debe estar estructurado con encabezados claros.
             }
     
 
-    async def send_scheduled_email_reports(self, db: Session):
+    async def send_scheduled_telegram_reports(self, db: Session):
         """
-        Enviar reportes por correo electrónico según frecuencia y suscripción.
+        Enviar reportes por Telegram según frecuencia y suscripción.
         """
         hoy = datetime.utcnow()
-        dia_semana = hoy.strftime('%A').lower()  # 'monday', etc.
+        dia_semana = hoy.strftime('%A').lower()
         dia_mes = hoy.day
 
-        subscripciones = db.query(Subscription).filter(Subscription.is_active == True).all()
+        # Obtener todas las suscripciones activas
+        subscripciones = db.query(Subscription).filter(
+            Subscription.is_active == True,
+        ).all()
 
         for sub in subscripciones:
-            if not sub.email:
+            if not sub.chat_id:
                 continue
 
             # Validar si corresponde enviar hoy según frecuencia
@@ -534,44 +545,19 @@ Debe estar estructurado con encabezados claros.
                     result = resp.json()
 
                 if result.get("success"):
-                    # Construir cuerpo del correo en HTML
-                    html_body = f"""
-                    <html>
-                      <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-                        <p>Hola <strong>{user_profile.nombre}</strong>,</p>
-
-                        <p>Aquí tienes tu reporte <strong>diario</strong> de inversión generado por <strong>CryptoAdvisor</strong>:</p>
-
-                        <h3>📊 Análisis del Portafolio</h3>
-                        <pre style="white-space: pre-wrap;">{result['ai_report']}</pre>
-
-                        <h3>📋 Resumen del Portafolio</h3>
-                        <ul>
-                          <li><strong>Inversión Total:</strong> ${result['portfolio_summary']['total_investment']}</li>
-                          <li><strong>Retorno Esperado:</strong> {result['portfolio_summary']['expected_return']}%</li>
-                          <li><strong>Riesgo:</strong> {result['portfolio_summary']['risk_score']}/100</li>
-                          <li><strong>Confianza:</strong> {result['portfolio_summary']['confidence_level']}%</li>
-                          <li><strong>Activos Recomendados:</strong> {result['portfolio_summary']['top_coins_count']} monedas</li>
-                        </ul>
-
-                        <p style="color: #666; font-size: 0.9em;">🕒 Generado el {result['generated_at']}</p>
-                      </body>
-                    </html>
-                    """
-
-                    # Enviar el correo con formato HTML
-                    result_email = send_email(
-                        to_email=sub.email,
-                        subject="📈 Tu reporte de inversión - CryptoAdvisor",
-                        body=html_body,
-                        html=True
+                    # Construir mensaje de Telegram
+                    mensaje = (
+                        f"📈 *CryptoAdvisor - Tu reporte de inversión diario*\n\n"
+                        f"{result['ai_report']}\n\n"
+                        f"🕒 Generado el: {result['generated_at']}"
                     )
 
-                    if not result_email.get("success"):
-                        print(f"[❌] Error al enviar email a {sub.email}: {result_email.get('error')}")
+                    result_telegram = await send_telegram_message(chat_id=sub.chat_id, text=mensaje)
+
+                    if not result_telegram.get("success"):
+                        print(f"[❌] Error al enviar a {sub.chat_id}: {result_telegram.get('error')}")
                     else:
-                        print(f"[✅] Correo enviado a {sub.email}")
+                        print(f"[✅] Reporte enviado a chat_id {sub.chat_id}")
 
             except Exception as e:
-                print(f"[❌] Error al procesar {sub.email}: {e}")
-
+                print(f"[❌] Error al procesar chat_id={sub.chat_id}: {e}")

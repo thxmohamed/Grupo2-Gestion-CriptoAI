@@ -12,8 +12,9 @@ from app.agents.data_collector import DataCollectorAgent
 from app.agents.economic_analysis import EconomicAnalysisAgent
 from app.agents.portfolio_optimizer import PortfolioOptimizationAgent
 from app.agents.communication import CommunicationAgent
-from app.models import UserProfile
+from app.models import UserProfile, Subscription
 from app import SessionLocal
+from app.utils import send_telegram_message
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ class UserProfileCreate(BaseModel):
     investment_horizon: str = "medium"  # short, medium, long
     preferred_sectors: List[str] = []
     is_subscribed: bool = False
+    wallet_balance: float = 0.0
 
 
 class UserProfileUpdate(BaseModel):
@@ -121,6 +123,9 @@ class LoginRequest(BaseModel):
 
 class DepositRequest(BaseModel):
     amount: float
+
+class TelegramReportRequest(BaseModel):
+    user_id: str
 
 
 # Dependency para obtener la sesión de base de datos
@@ -479,7 +484,7 @@ async def register_user(profile: UserProfileCreate, db: Session = Depends(get_db
             risk_tolerance=profile.risk_tolerance,
             investment_amount=profile.investment_amount,
             investment_horizon=profile.investment_horizon,
-            preferred_sectors=json.dumps(profile.preferred_sectors),
+            preferred_sectors=json.dumps(profile.preferred_sectors),  # Serializa lista a string
             is_subscribed=profile.is_subscribed,
             wallet_balance=0.0
         )
@@ -491,27 +496,28 @@ async def register_user(profile: UserProfileCreate, db: Session = Depends(get_db
         db.commit()
         db.refresh(db_profile)
 
+        # Retornar con formato correcto
         return UserProfileResponse(
             id=db_profile.id,
-            user_id=profile.user_id,
-            email=profile.email,
-            nombre=profile.nombre,
-            apellido=profile.apellido,
-            telefono=profile.telefono,
-            risk_tolerance=profile.risk_tolerance,
-            investment_amount=profile.investment_amount,
-            investment_horizon=profile.investment_horizon,
-            preferred_sectors=json.loads(profile.preferred_sectors) if profile.preferred_sectors else [],
-            is_subscribed=profile.is_subscribed,
-            wallet_balance=profile.wallet_balance,
-            created_at=profile.created_at,
-            updated_at=profile.updated_at
+            user_id=db_profile.user_id,
+            email=db_profile.email,
+            nombre=db_profile.nombre,
+            apellido=db_profile.apellido,
+            telefono=db_profile.telefono,
+            risk_tolerance=db_profile.risk_tolerance,
+            investment_amount=db_profile.investment_amount,
+            investment_horizon=db_profile.investment_horizon,
+            preferred_sectors=json.loads(db_profile.preferred_sectors) if db_profile.preferred_sectors else [],
+            is_subscribed=db_profile.is_subscribed,
+            wallet_balance=db_profile.wallet_balance,
+            created_at=db_profile.created_at,
+            updated_at=db_profile.updated_at
         )
-
 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error registrando usuario: {str(e)}")
+
 
 
 @router.get("/user-profiles/{user_id}", response_model=UserProfileResponse)
@@ -927,18 +933,53 @@ async def generate_portfolio_report(request: PortfolioReportRequest, db: Session
         raise HTTPException(status_code=500, detail=f"Error generando reporte de portfolio: {str(e)}")
     
 
-@router.post("/admin/send-email-reports")
-async def trigger_email_reports():
-    """
-    Endpoint manual para enviar reportes por correo a los usuarios según su frecuencia.
-    Útil para pruebas o ejecución forzada desde frontend.
-    """
+@router.post("/send-telegram-report")
+async def send_telegram_report(
+    request: TelegramReportRequest,
+    db: Session = Depends(get_db)
+):
+    """Genera y envía un reporte de inversión por Telegram al usuario."""
     try:
-        db = SessionLocal()
-        agent = CommunicationAgent()
-        await agent.send_scheduled_email_reports(db)
-        db.close()
-        return {"success": True, "message": "Reportes enviados manualmente"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error enviando reportes: {str(e)}")
+        sub = db.query(Subscription).filter(
+            Subscription.user_id == request.user_id,
+            Subscription.is_active == True,
+            Subscription.chat_id.isnot(None)
+        ).first()
 
+        if not sub:
+            raise HTTPException(status_code=404, detail="Suscripción activa no encontrada.")
+
+        user_profile = db.query(UserProfile).filter(
+            UserProfile.user_id == request.user_id
+        ).first()
+
+        if not user_profile:
+            raise HTTPException(status_code=404, detail="Perfil no encontrado.")
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "http://localhost:8000/api/generate-portfolio-report",
+                json={"id": user_profile.id},
+                timeout=30.0
+            )
+            resp.raise_for_status()
+            result = resp.json()
+
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail="No se pudo generar el reporte")
+
+        mensaje = (
+            f"📈 *CryptoAdvisor - Tu reporte de inversión diario*\n\n"
+            f"{result['ai_report']}\n\n"
+            f"🕒 Generado el: {result['generated_at']}"
+        )
+
+        send_result = await send_telegram_message(chat_id=sub.chat_id, text=mensaje)
+
+        if not send_result.get("success"):
+            raise HTTPException(status_code=500, detail=f"No se pudo enviar el mensaje: {send_result.get('error')}")
+
+        return {"success": True, "message": "Reporte enviado correctamente"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

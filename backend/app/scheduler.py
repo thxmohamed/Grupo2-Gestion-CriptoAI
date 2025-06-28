@@ -95,13 +95,17 @@ class SchedulerService:
             logger.error(f"Error en limpieza programada de datos: {e}")
 
 
-    async def send_email_reports_job(self):
+    async def send_telegram_reports_job(self):
+        """
+        Tarea programada para enviar reportes de inversión por Telegram.
+        """
         try:
             db = SessionLocal()
-            await self.communication_agent.send_scheduled_email_reports(db)
+            await self.communication_agent.send_scheduled_telegram_reports(db)
             db.close()
         except Exception as e:
-            logger.error(f"Error en envío programado de reportes por correo: {e}")
+            print(f"[❌] Error enviando reportes por Telegram: {e}")
+
 
 
     
@@ -117,12 +121,12 @@ class SchedulerService:
             replace_existing=True
         )
 
-        # Enviar reportes por correo según frecuencia
+        # Enviar reportes de Telegram cada día a las 9:00 AM
         self.scheduler.add_job(
-            self.send_email_reports_job,
-            CronTrigger(hour=8, minute=0),
-            id="send_email_reports_job",
-            name="Send portfolio reports via email based on user frequency",
+            self.send_telegram_reports_job,
+            CronTrigger(hour=9, minute=0),
+            id="send_telegram_reports_job",
+            name="Send portfolio reports via Telegram based on user frequency",
             replace_existing=True
         )
 

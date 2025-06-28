@@ -121,6 +121,8 @@ def auto_migrate():
     logger.info("🚀 Iniciando verificación de base de datos...")
     
     try:
+        from app import engine, Base
+
         # Crear todas las tablas definidas en los modelos
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Tablas creadas/verificadas por SQLAlchemy")

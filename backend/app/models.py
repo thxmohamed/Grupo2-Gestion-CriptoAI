@@ -88,9 +88,11 @@ class Subscription(Base):
     user_id = Column(String(100), nullable=False, index=True)
     email = Column(String(255))
     phone = Column(String(20))
+    chat_id = Column(String(50))
     notification_type = Column(String(20))  # email, sms, both
     frequency = Column(String(20))  # daily, weekly, monthly
     is_active = Column(Boolean, default=True)
+    telegram_pending = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
