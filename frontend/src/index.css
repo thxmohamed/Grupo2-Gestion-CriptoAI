@@ -407,49 +407,155 @@ p {
 }
 
 .markdown-report {
-  font-family: 'Segoe UI', sans-serif;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
   line-height: 1.75;
-  color: #333;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-primary);
 }
 
 .markdown-report h1,
 .markdown-report h2 {
   text-align: center;
-  font-weight: 700;
-  margin-top: 1.5rem;
-  margin-bottom: 1rem;
+  font-weight: 800;
+  margin-top: 2rem;
+  margin-bottom: 1.5rem;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .markdown-report h1 {
-  font-size: 1.8rem;
-  color: #4a4a4a;
+  font-size: 2.2rem;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .markdown-report h2 {
-  font-size: 1.5rem;
-  color: #2c3e50;
+  font-size: 1.8rem;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .markdown-report h3 {
+  font-size: 1.4rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+  font-weight: 700;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.markdown-report h4 {
   font-size: 1.2rem;
   margin-top: 1.2rem;
-  color: #333;
+  margin-bottom: 0.8rem;
+  color: var(--text-accent);
+  font-weight: 600;
 }
 
 .markdown-report p {
-  margin-bottom: 1rem;
+  margin-bottom: 1.2rem;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1.8;
 }
 
 .markdown-report strong {
-  color: #111;
+  color: var(--text-primary);
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(100, 255, 218, 0.2) 0%, rgba(100, 255, 218, 0.1) 100%);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.markdown-report em {
+  color: var(--text-accent);
+  font-style: italic;
 }
 
 .markdown-report ul {
-  list-style: disc inside;
-  margin-left: 1.2rem;
-  margin-bottom: 1rem;
+  list-style: none;
+  margin-left: 0;
+  margin-bottom: 1.5rem;
+  padding-left: 0;
 }
 
 .markdown-report li {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.8rem;
+  padding-left: 24px;
+  position: relative;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.markdown-report li::before {
+  content: "▶️";
+  position: absolute;
+  left: 0;
+  color: var(--text-accent);
+  font-size: 14px;
+}
+
+.markdown-report ol {
+  counter-reset: item;
+  margin-left: 0;
+  margin-bottom: 1.5rem;
+  padding-left: 0;
+}
+
+.markdown-report ol li {
+  counter-increment: item;
+  padding-left: 32px;
+}
+
+.markdown-report ol li::before {
+  content: counter(item) ".";
+  position: absolute;
+  left: 0;
+  color: var(--text-accent);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.markdown-report code {
+  background: rgba(100, 255, 218, 0.1);
+  color: var(--text-accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Fira Code', monospace;
+  font-size: 14px;
+}
+
+.markdown-report blockquote {
+  margin: 1.5rem 0;
+  padding: 16px 20px;
+  border-left: 4px solid var(--text-accent);
+  background: rgba(100, 255, 218, 0.05);
+  border-radius: 0 8px 8px 0;
+}
+
+.markdown-report blockquote p {
+  color: var(--text-primary);
+  font-style: italic;
+  margin: 0;
+}
+
+.markdown-report hr {
+  border: none;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--text-accent), transparent);
+  margin: 2rem 0;
 }
