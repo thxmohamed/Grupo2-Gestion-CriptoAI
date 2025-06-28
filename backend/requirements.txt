@@ -29,4 +29,5 @@ python-telegram-bot==20.6
 google-generativeai
 email-validator
 nest_asyncio
+pulp
 
