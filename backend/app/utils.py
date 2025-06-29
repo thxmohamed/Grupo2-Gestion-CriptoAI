@@ -494,6 +494,30 @@ class DataProcessor:
         return processed
     
     @staticmethod
+    def process_coingecko_prices(prices: List[List], symbol: str) -> List[Dict[str, Any]]:
+        """
+        Procesa precios de CoinGecko (formato [timestamp, price]) a estructura estándar
+        """
+        processed = []
+        for entry in prices:
+            try:
+                ts, price = entry
+                processed.append({
+                    'symbol': symbol.upper(),
+                    'source': 'coingecko',
+                    'timestamp': datetime.fromtimestamp(ts / 1000),
+                    'close': float(price),
+                    'open': None,
+                    'high': None,
+                    'low': None,
+                    'volume': None
+                })
+            except Exception as e:
+                logger.warning(f"Error procesando precio CoinGecko: {e}")
+        return processed
+
+    
+    @staticmethod
     def merge_coin_data(binance_data: List[Dict], coingecko_data: List[Dict]) -> List[Dict[str, Any]]:
         """Combinar datos de Binance y CoinGecko por símbolo"""
         merged = {}

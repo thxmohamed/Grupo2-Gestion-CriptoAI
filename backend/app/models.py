@@ -96,3 +96,17 @@ class Subscription(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+class HistoricalPrice(Base):
+    __tablename__ = "historical_prices"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    symbol = Column(String(10), index=True, nullable=False)  # Ej: BTC, ETH
+    source = Column(String(20), nullable=False)  # 'binance', 'coingecko'
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    open = Column(Float, nullable=True)   # Solo Binance
+    high = Column(Float, nullable=True)   # Solo Binance
+    low = Column(Float, nullable=True)    # Solo Binance
+    close = Column(Float, nullable=False) # Binance (close) o CoinGecko (price)
+    volume = Column(Float, nullable=True) # Solo Binance
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

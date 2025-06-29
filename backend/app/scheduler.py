@@ -107,6 +107,20 @@ class SchedulerService:
             print(f"[❌] Error enviando reportes por Telegram: {e}")
 
 
+    async def collect_historical_data_job(self):
+        """
+        Tarea diaria para recolectar datos históricos automáticamente.
+        """
+        try:
+            logger.info("Iniciando tarea programada de recolección de datos históricos")
+            db = SessionLocal()
+            await self.data_collector.collect_historical_data(db=db)
+            db.close()
+            logger.info("Datos históricos recolectados y guardados correctamente")
+
+        except Exception as e:
+            logger.error(f"Error en tarea programada de históricos: {e}")
+
 
     
     def start_scheduler(self):
@@ -120,6 +134,16 @@ class SchedulerService:
             name='Actualizar datos de criptomonedas',
             replace_existing=True
         )
+
+        # Recolección diaria de históricos a las 3:00 AM
+        self.scheduler.add_job(
+            self.collect_historical_data_job,
+            CronTrigger(hour=3, minute=0),
+            id='collect_historical_data',
+            name='Recolectar datos históricos automáticamente',
+            replace_existing=True
+        )
+
 
         # Enviar reportes de Telegram cada día a las 9:00 AM
         self.scheduler.add_job(
