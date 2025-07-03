@@ -127,6 +127,12 @@ class DepositRequest(BaseModel):
 class TelegramReportRequest(BaseModel):
     user_id: str
 
+class HistoricalDataRequest(BaseModel):
+    days: int = 14  # Días de datos históricos a obtener
+    limit: int = 10
+
+class EconomicMetricRequest(BaseModel):
+    symbol: str
 
 # Dependency para obtener la sesión de base de datos
 def get_db():
@@ -389,70 +395,32 @@ async def get_market_top_5():
         raise HTTPException(status_code=500, detail=f"Error obteniendo el Top 5 del mercado: {str(e)}")
 
 
-@router.get("/economic-metrics")
-async def get_economic_metrics():
+@router.post("/economic-metrics")
+async def get_economic_metrics(request: EconomicMetricRequest, db: Session = Depends(get_db)):
     """
     Endpoint que retorna métricas cuantitativas de inversión y riesgo para todas las monedas del market overview.
     Mejorado con manejo de errores y caché.
     """
     try:
-        # Usar el helper de CoinGecko directamente en lugar de llamada interna
-        from app.utils import coingecko_helper
         
-        market_data = await coingecko_helper.get_coins_markets(
-            vs_currency='usd',
-            order='market_cap_desc', 
-            per_page=20,
-            page=1,
-            price_change_percentage='24h'
-        )
-        
+        market_data = data_collector.get_data_from_db(db, request.symbol, "binance")
         if not market_data:
-            raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado")
-        
-        # Convertir datos al formato esperado por economic_analyzer
-        coins = [
-            {
-                "symbol": coin['symbol'].upper(),
-                "name": coin['name'],
-                "current_price": coin.get('current_price', 0),
-                "market_cap": coin.get('market_cap', 0),
-                "price_change_24h": coin.get('price_change_percentage_24h', 0),
-                "volume_24h": coin.get('total_volume', 0)
-            }
-            for coin in market_data[:20]
-        ]
-        
-        metrics = economic_analyzer.compute_market_metrics(coins)
+            raise HTTPException(status_code=404, detail="No se encontraron datos para el símbolo proporcionado")
+        # Calcular métricas económicas usando el agente
+        economic_metrics = economic_analyzer.calculate_economic_metrics(market_data)
+        if not economic_metrics:
+            raise HTTPException(status_code=404, detail="No se encontraron métricas económicas para el símbolo proporcionado")
+        # Retornar métricas con timestamp y fuente de datos
         return {
-            "success": True, 
-            "metrics": metrics, 
+            "success": True,
+            "metrics": economic_metrics,
             "timestamp": datetime.now().isoformat(),
-            "data_source": "coingecko_direct"
+            "data_source": "database",
+            "note": "Datos obtenidos de la base de datos"
         }
         
     except Exception as e:
-        # Si falla todo, devolver métricas básicas de fallback
-        logger.error(f"Error obteniendo métricas económicas: {str(e)}")
-        
-        fallback_metrics = {
-            "market_volatility": 0.15,
-            "fear_greed_index": 50,
-            "market_trend": "neutral",
-            "recommended_allocation": {
-                "conservative": {"btc": 40, "eth": 30, "stablecoins": 30},
-                "moderate": {"btc": 50, "eth": 35, "altcoins": 15},
-                "aggressive": {"btc": 40, "eth": 30, "altcoins": 30}
-            }
-        }
-        
-        return {
-            "success": True,
-            "metrics": fallback_metrics,
-            "timestamp": datetime.now().isoformat(),
-            "data_source": "fallback",
-            "note": "Usando datos de fallback debido a problemas de conectividad"
-        }
+        raise HTTPException(status_code=500, detail=f"Error obteniendo métricas económicas: {str(e)}")
 
 # ================================
 # CRUD ENDPOINTS FOR USER PROFILE
@@ -563,7 +531,6 @@ async def get_all_user_profiles(skip: int = 0, limit: int = 100, db: Session = D
     """
     try:
         profiles = db.query(UserProfile).offset(skip).limit(limit).all()
-        
         response_profiles = []
         for profile in profiles:
             response_profile = UserProfileResponse(
@@ -983,3 +950,30 @@ async def send_telegram_report(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+@router.post("/collect-historical-data")
+async def collect_historical_data(request: HistoricalDataRequest, db: Session = Depends(get_db)):
+    """
+    Endpoint para recolectar y guardar datos históricos de criptomonedas.
+    Requiere un ID numérico del usuario para asociar los datos.
+    """
+    try:
+        
+        # Recolectar datos históricos usando el agente de recolección de datos
+        historical_data = await data_collector.collect_historical_data(db, request.days, request.limit)
+        
+        if not historical_data:
+            raise HTTPException(status_code=503, detail="No se pudieron obtener datos históricos")
+        
+        
+        return {
+            "success": True,
+            "message": f"Datos históricos guardados para {len(historical_data)} símbolos",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error recolectando datos históricos: {str(e)}")

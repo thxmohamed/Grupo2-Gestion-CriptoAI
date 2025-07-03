@@ -446,3 +446,32 @@ class EconomicAnalysisAgent:
             })
         
         return results
+    def calculate_economic_metrics(self, historical_prices: List[float]) -> Dict[str, Any]:
+        """
+        Calcula métricas económicas avanzadas a partir de precios históricos.
+        
+        Args:
+            historical_prices (List[float]): Lista de precios históricos.
+
+        Returns:
+            Dict[str, Any]: Diccionario con métricas calculadas.
+        """
+        if not historical_prices or len(historical_prices) < 2:
+            return {
+                'volatility': 0.0,
+                'rsi': 50.0,
+                'ma_7': historical_prices[-1] if historical_prices else 0,
+                'ma_30': historical_prices[-1] if historical_prices else 0
+            }
+        
+        volatility = self.calculate_volatility(historical_prices)
+        rsi = self.calculate_rsi(historical_prices)
+        ma_data = self.calculate_moving_averages(historical_prices)
+        
+        return {
+            'volatility': volatility,
+            'rsi': rsi,
+            'ma_7': ma_data['ma_7'],
+            'ma_30': ma_data['ma_30']
+        }
+        
