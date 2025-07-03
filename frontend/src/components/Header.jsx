@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
-export function Header() {
+export function Header({ user, onLogout }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -18,9 +20,23 @@ export function Header() {
 
   const navItems = [
     { path: "/", label: "Inicio", icon: "🏠" },
-    { path: "/dashboard", label: "Dashboard", icon: "📊" },
-    { path: "/admin", label: "Administración", icon: "⚙️" },
+    { path: "/dashboard", label: "Dashboard", icon: "📊", requireAuth: true },
+    { path: "/portfolio", label: "Portafolio", icon: "💼", requireAuth: true },
   ];
+
+  const handleLogout = () => {
+    onLogout();
+    setShowUserMenu(false);
+    navigate('/');
+  };
+
+  const formatBalance = (balance) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2
+    }).format(balance);
+  };
 
   return (
     <header 
@@ -116,7 +132,9 @@ export function Header() {
 
           {/* Navigation */}
           <nav style={{ display: 'flex', gap: '8px' }}>
-            {navItems.map((item) => (
+            {navItems
+              .filter(item => !item.requireAuth || user)
+              .map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
@@ -183,35 +201,242 @@ export function Header() {
             ))}
           </nav>
 
-          {/* Live Market Indicator */}
-          <div 
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
-              background: 'rgba(16, 185, 129, 0.1)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: '#10b981',
-            }}
-          >
-            <div
+          {/* Right side - User info or Auth buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {/* Live Market Indicator */}
+            <div 
               style={{
-                width: '8px',
-                height: '8px',
-                background: '#10b981',
-                borderRadius: '50%',
-                boxShadow: '0 0 8px #10b981',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#10b981',
               }}
-              className="animate-pulse"
-            />
-            LIVE
+            >
+              <div
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  background: '#10b981',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 8px #10b981',
+                }}
+                className="animate-pulse"
+              />
+              LIVE
+            </div>
+
+            {/* User Menu or Auth Buttons */}
+            {user ? (
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: '12px',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-smooth)',
+                    backdropFilter: 'blur(10px)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-card-hover)';
+                    e.currentTarget.style.borderColor = 'var(--text-accent)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-card)';
+                    e.currentTarget.style.borderColor = 'var(--border-primary)';
+                  }}
+                >
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: '14px',
+                    fontWeight: '600'
+                  }}>
+                    {user.nombre ? user.nombre.charAt(0).toUpperCase() : '👤'}
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                      ¡Hola, {user.nombre}!
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-accent)' }}>
+                      {formatBalance(user.wallet_balance || 0)}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {showUserMenu ? '▲' : '▼'}
+                  </span>
+                </button>
+
+                {/* User Dropdown Menu */}
+                {showUserMenu && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '8px',
+                    width: '200px',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-primary)',
+                    borderRadius: '12px',
+                    backdropFilter: 'blur(20px)',
+                    boxShadow: 'var(--shadow-xl)',
+                    overflow: 'hidden',
+                    zIndex: 1000
+                  }}>
+                    <div style={{
+                      padding: '16px',
+                      borderBottom: '1px solid var(--border-primary)'
+                    }}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                        {user.nombre}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        ID: {user.user_id}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-accent)', marginTop: '4px' }}>
+                        Balance: {formatBalance(user.wallet_balance || 0)}
+                      </div>
+                    </div>
+                    
+                    <Link
+                      to="/dashboard"
+                      onClick={() => setShowUserMenu(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '12px 16px',
+                        color: 'var(--text-secondary)',
+                        textDecoration: 'none',
+                        fontSize: '14px',
+                        transition: 'var(--transition-smooth)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--bg-card-hover)';
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                      }}
+                    >
+                      📊 Dashboard
+                    </Link>
+
+                    <Link
+                      to="/portfolio"
+                      onClick={() => setShowUserMenu(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '12px 16px',
+                        color: 'var(--text-secondary)',
+                        textDecoration: 'none',
+                        fontSize: '14px',
+                        transition: 'var(--transition-smooth)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--bg-card-hover)';
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                      }}
+                    >
+                      💼 Mi Portafolio
+                    </Link>
+
+                    <div style={{ borderTop: '1px solid var(--border-primary)' }}>
+                      <button
+                        onClick={handleLogout}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '12px 16px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#ef4444',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          transition: 'var(--transition-smooth)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        🚪 Cerrar Sesión
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Link
+                  to="/login"
+                  className="btn btn-ghost"
+                  style={{
+                    padding: '10px 20px',
+                    fontSize: '14px'
+                  }}
+                >
+                  Iniciar Sesión
+                </Link>
+                <Link
+                  to="/register"
+                  className="btn btn-primary"
+                  style={{
+                    padding: '10px 20px',
+                    fontSize: '14px'
+                  }}
+                >
+                  Registrarse
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Click outside to close menu */}
+      {showUserMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 999
+          }}
+          onClick={() => setShowUserMenu(false)}
+        />
+      )}
     </header>
   );
 }

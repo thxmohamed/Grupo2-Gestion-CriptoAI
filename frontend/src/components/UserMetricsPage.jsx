@@ -236,7 +236,7 @@ export default function UserMetricsPage() {
               ⏱️ {user_profile.investment_horizon}
             </div>
             <div className="badge" style={{ background: 'var(--primary-gradient)' }}>
-              💰 ${user_profile.investment_amount?.toLocaleString()}
+              💰 ${user_profile.wallet_balance?.toLocaleString()}
             </div>
           </div>
         )}

@@ -5,10 +5,12 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Instalar dependencias del sistema
-RUN apt-get update && apt-get install -y \
+RUN apt-get update --allow-releaseinfo-change && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     gcc \
+    gnupg \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements.txt primero para aprovechar el cache de Docker
