@@ -1,0 +1,6 @@
+python-telegram-bot 
+sqlalchemy 
+nest-asyncio
+fastapi==0.115.0
+dotenv
+werkzeug
