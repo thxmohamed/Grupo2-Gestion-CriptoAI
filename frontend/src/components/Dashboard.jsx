@@ -1332,15 +1332,6 @@ export default function CryptoDashboard({ user }) {
                       position: 'relative',
                       overflow: 'hidden'
                     }}>
-                      {coin.symbol?.charAt(0) || '₿'}
-                      <div style={{
-                        position: 'absolute',
-                        top: '-2px',
-                        right: '-2px',
-                        fontSize: '12px'
-                      }}>
-                        #{index + 1}
-                      </div>
                     </div>
 
                     <div>
