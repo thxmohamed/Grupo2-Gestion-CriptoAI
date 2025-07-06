@@ -458,7 +458,7 @@ export default function HomePage() {
                         color: 'var(--text-accent)',
                         margin: 0
                       }}>
-                        {topCryptos[currentSlide]?.investment_score}/10
+                        {topCryptos[currentSlide]?.investment_score}/100
                       </p>
                     </div>
                   </div>

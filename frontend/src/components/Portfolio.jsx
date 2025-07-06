@@ -345,7 +345,7 @@ export default function Portfolio({ user }) {
                   <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
                     <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>ESTABILIDAD</p>
                     <p style={{ fontSize: '18px', fontWeight: '700', color: '#3b82f6', margin: 0 }}>
-                      {coin.stability_score}/10
+                      {coin.stability_score}/100
                     </p>
                   </div>
                   <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px' }}>

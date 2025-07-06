@@ -311,9 +311,6 @@ export function Header({ user, onLogout }) {
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                         ID: {user.user_id}
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-accent)', marginTop: '4px' }}>
-                        Balance: {formatBalance(user.wallet_balance || 0)}
-                      </div>
                     </div>
                     
                     <Link
