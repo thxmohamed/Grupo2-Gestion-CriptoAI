@@ -1,17 +1,117 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import apiClient from "../http-common";
+import TelegramSubscription from "./TelegramSubscription";
+import CryptoDetailsModal from "./CryptoDetailsModal";
 
-export default function CryptoDashboard() {
+export default function CryptoDashboard({ user }) {
+  const navigate = useNavigate();
   const [metrics, setMetrics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [rateLimitExceeded, setRateLimitExceeded] = useState(false);
-  const [expandedIndex, setExpandedIndex] = useState(null);
+  const [selectedCoin, setSelectedCoin] = useState(null);
+  const [showCryptoModal, setShowCryptoModal] = useState(false);
   const [sortBy, setSortBy] = useState("market_cap");
   const [filterRisk, setFilterRisk] = useState("all");
   const [currentPage, setCurrentPage] = useState(0);
   const [itemsPerPage, setItemsPerPage] = useState(3); // Número de criptos por página del carrusel
   const [autoPlay, setAutoPlay] = useState(false);
+  
+  // Estados para el depósito de dinero
+  const [depositAmount, setDepositAmount] = useState("");
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositError, setDepositError] = useState(null);
+  const [depositSuccess, setDepositSuccess] = useState(false);
+  const [currentUser, setCurrentUser] = useState(user);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [displayBalance, setDisplayBalance] = useState(user?.wallet_balance || 0);
+
+  // Redirect to login if user is not authenticated
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    // Sincronizar el estado local con las props del usuario
+    setCurrentUser(user);
+    setDisplayBalance(user?.wallet_balance || 0);
+  }, [user, navigate]);
+
+  // Función nuclear para forzar actualización del balance
+  const forceBalanceUpdate = (newBalance) => {
+    console.log("🚨 FORZANDO ACTUALIZACIÓN NUCLEAR DEL BALANCE:", newBalance);
+    
+    // Actualizar todos los estados posibles
+    setDisplayBalance(newBalance);
+    setCurrentUser(prevUser => ({
+      ...prevUser,
+      wallet_balance: newBalance
+    }));
+    setRefreshTrigger(prev => prev + 10); // Gran salto para asegurar cambio
+    
+    // Múltiples actualizaciones con delay
+    [50, 100, 200, 500].forEach(delay => {
+      setTimeout(() => {
+        setDisplayBalance(newBalance);
+        setRefreshTrigger(prev => prev + 1);
+      }, delay);
+    });
+  };
+
+  // Función para obtener el balance actualizado del usuario
+  const fetchUserBalance = async () => {
+    const userId = currentUser?.user_id || user?.user_id;
+    if (!userId) return;
+    
+    setBalanceLoading(true);
+    try {
+      const response = await apiClient.get(`/api/wallet/balance/${userId}`);
+      const updatedBalance = response.data.balance;
+      
+      console.log("Fetch balance response:", {
+        userId,
+        balanceAnterior: displayBalance,
+        balanceNuevo: updatedBalance,
+        timestamp: new Date().toISOString()
+      });
+      
+      // USAR LA FUNCIÓN NUCLEAR
+      forceBalanceUpdate(updatedBalance);
+      
+      return updatedBalance;
+    } catch (err) {
+      console.error("Error al obtener balance:", err);
+      throw err;
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  // Cargar balance al montar el componente
+  useEffect(() => {
+    if (user?.user_id) {
+      fetchUserBalance();
+    }
+  }, [user?.user_id]); // Solo cuando cambie el user_id del prop, no del estado local
+
+  // Observer para cambios en el balance del usuario
+  useEffect(() => {
+    console.log("Balance actualizado en UI:", {
+      balance: currentUser?.wallet_balance,
+      displayBalance: displayBalance,
+      formatted: formatBalance(displayBalance),
+      timestamp: new Date().toISOString()
+    });
+  }, [currentUser?.wallet_balance, displayBalance]);
+
+  // Sincronizar displayBalance con currentUser
+  useEffect(() => {
+    if (currentUser?.wallet_balance !== undefined) {
+      setDisplayBalance(currentUser.wallet_balance);
+    }
+  }, [currentUser?.wallet_balance]);
 
   useEffect(() => {
     apiClient.get(`/api/economic-metrics/`)
@@ -29,6 +129,26 @@ export default function CryptoDashboard() {
         setLoading(false);
       });
   }, []);
+
+  // If user is not authenticated, don't render anything (will redirect)
+  if (!user) {
+    return null;
+  }
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Buenos días";
+    if (hour < 18) return "Buenas tardes";
+    return "Buenas noches";
+  };
+
+  const formatBalance = (balance) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2
+    }).format(balance);
+  };
 
   const getRiskBadgeStyle = (riskLevel) => {
     switch (riskLevel) {
@@ -80,10 +200,14 @@ export default function CryptoDashboard() {
     };
   };
 
-  const toggleExpand = (localIndex) => {
-    // Convertir índice local del carrusel a índice global
-    const globalIndex = currentPage * itemsPerPage + localIndex;
-    setExpandedIndex(expandedIndex === globalIndex ? null : globalIndex);
+  const openCryptoModal = (coin) => {
+    setSelectedCoin(coin);
+    setShowCryptoModal(true);
+  };
+
+  const closeCryptoModal = () => {
+    setShowCryptoModal(false);
+    setSelectedCoin(null);
   };
 
   const filteredMetrics = metrics.filter(coin => 
@@ -114,17 +238,14 @@ export default function CryptoDashboard() {
 
   const nextPage = () => {
     setCurrentPage((prev) => (prev + 1) % totalPages);
-    setExpandedIndex(null); // Cerrar cualquier tarjeta expandida al cambiar página
   };
 
   const prevPage = () => {
     setCurrentPage((prev) => (prev - 1 + totalPages) % totalPages);
-    setExpandedIndex(null); // Cerrar cualquier tarjeta expandida al cambiar página
   };
 
   const goToPage = (page) => {
     setCurrentPage(page);
-    setExpandedIndex(null);
   };
 
   // Controles de teclado para el carrusel
@@ -151,8 +272,87 @@ export default function CryptoDashboard() {
   // Reset página cuando cambian los filtros
   useEffect(() => {
     setCurrentPage(0);
-    setExpandedIndex(null);
   }, [sortBy, filterRisk, itemsPerPage]);
+
+  // Función para manejar el depósito de dinero
+  const handleDeposit = async () => {
+    if (!currentUser) {
+      setDepositError("Debe estar logueado para realizar un depósito");
+      return;
+    }
+
+    const amount = parseFloat(depositAmount);
+    
+    // Validaciones
+    if (isNaN(amount) || amount <= 0) {
+      setDepositError("Por favor ingrese un monto válido mayor a 0");
+      return;
+    }
+
+    if (amount > 10000) {
+      setDepositError("El monto máximo permitido es $10,000");
+      return;
+    }
+
+    const newBalance = (displayBalance || 0) + amount;
+    if (newBalance > 10000) {
+      setDepositError(`El depósito excedería el límite máximo. Balance actual: ${formatBalance(displayBalance || 0)}`);
+      return;
+    }
+
+    setDepositLoading(true);
+    setDepositError(null);
+    setDepositSuccess(false);
+
+    try {
+      const response = await apiClient.post(`/api/wallet/deposit/${currentUser.user_id}`, {
+        amount: amount
+      });
+
+      // Actualizar inmediatamente con el nuevo balance de la respuesta
+      const newBalance = response.data.new_balance;
+      if (newBalance !== undefined) {
+        console.log("Actualizando balance:", {
+          anterior: displayBalance,
+          nuevo: newBalance,
+          timestamp: new Date().toISOString()
+        });
+        
+        // USAR LA FUNCIÓN NUCLEAR
+        forceBalanceUpdate(newBalance);
+      }
+      
+      // También obtener el balance actualizado desde la API como respaldo
+      try {
+        // Esperar un poco antes de refrescar para asegurar que el backend esté actualizado
+        setTimeout(async () => {
+          await fetchUserBalance();
+        }, 500);
+      } catch (balanceError) {
+        console.warn("Error al refrescar balance después del depósito:", balanceError);
+        // Si falla el refresh, seguimos con el balance de la respuesta del depósito
+      }
+      
+      // Limpiar el formulario
+      setDepositAmount("");
+      setDepositSuccess(true);
+      
+      // Ocultar mensaje de éxito después de 3 segundos
+      setTimeout(() => {
+        setDepositSuccess(false);
+      }, 3000);
+
+    } catch (err) {
+      console.error("Error al realizar depósito:", err);
+      if (err.response?.data?.detail) {
+        setDepositError(err.response.data.detail);
+      } else {
+        setDepositError("Error al procesar el depósito. Intente nuevamente.");
+      }
+    } finally {
+      setDepositLoading(false);
+    }
+  };
 
   // Auto-play del carrusel
   useEffect(() => {
@@ -161,7 +361,6 @@ export default function CryptoDashboard() {
     
     const interval = setInterval(() => {
       setCurrentPage((prev) => (prev + 1) % pages);
-      setExpandedIndex(null);
     }, 5000); // Cambiar cada 5 segundos
 
     return () => clearInterval(interval);
@@ -262,6 +461,445 @@ export default function CryptoDashboard() {
       background: 'var(--bg-primary)'
     }}>
       <div className="container">
+        {/* Personalized Welcome Section */}
+        <div className="card" style={{
+          padding: '32px',
+          marginBottom: '40px',
+          background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
+          border: '1px solid rgba(102, 126, 234, 0.2)',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Decorative elements */}
+          <div style={{
+            position: 'absolute',
+            top: '-50px',
+            right: '-50px',
+            width: '100px',
+            height: '100px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            borderRadius: '50%',
+            opacity: 0.1,
+            filter: 'blur(30px)'
+          }} />
+          
+          <div className="animate-fadeInUp" style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '24px',
+            flexWrap: 'wrap'
+          }}>
+            <div>
+              <h1 style={{
+                fontSize: 'clamp(1.8rem, 4vw, 2.5rem)',
+                fontWeight: '700',
+                color: 'var(--text-primary)',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span>👋</span>
+                {getGreeting()}, {currentUser.nombre}!
+              </h1>
+              <p style={{
+                color: 'var(--text-secondary)',
+                fontSize: '16px',
+                marginBottom: '16px'
+              }}>
+                Bienvenido a tu dashboard personalizado de CriptoAI. Aquí tienes las mejores oportunidades del mercado.
+              </p>
+              <div style={{
+                display: 'flex',
+                gap: '24px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  background: 'var(--bg-card)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-primary)'
+                }}>
+                  <span style={{ fontSize: '16px' }}>🆔</span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>ID:</span>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: '600' }}>
+                    {currentUser.user_id}
+                  </span>
+                </div>
+                
+                {/* Componente de suscripción a Telegram */}
+                <TelegramSubscription user={currentUser} />
+              </div>
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <div style={{
+                width: '80px',
+                height: '80px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '32px',
+                color: 'white',
+                boxShadow: '0 8px 32px rgba(102, 126, 234, 0.3)'
+              }}>
+                {currentUser.nombre ? currentUser.nombre.charAt(0).toUpperCase() : '👤'}
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 12px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#10b981'
+              }}>
+                <div style={{
+                  width: '6px',
+                  height: '6px',
+                  background: '#10b981',
+                  borderRadius: '50%',
+                  animation: 'pulse 2s infinite'
+                }} />
+                ACTIVO
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Wallet Deposit Section */}
+        {currentUser && (
+          <div className="card animate-fadeInUp" style={{
+            padding: '32px',
+            marginBottom: '40px',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%)',
+            border: '1px solid rgba(16, 185, 129, 0.2)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            {/* Decorative elements */}
+            <div style={{
+              position: 'absolute',
+              top: '-30px',
+              left: '-30px',
+              width: '80px',
+              height: '80px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              borderRadius: '50%',
+              opacity: 0.1,
+              filter: 'blur(20px)'
+            }} />
+            
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: '32px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ flex: '1', minWidth: '300px' }}>
+                <h2 style={{
+                  fontSize: 'clamp(1.5rem, 3vw, 2rem)',
+                  fontWeight: '700',
+                  color: 'var(--text-primary)',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}>
+                  <span>💰</span>
+                  Cargar Dinero a tu Wallet
+                </h2>
+                <p style={{
+                  color: 'var(--text-secondary)',
+                  fontSize: '16px',
+                  marginBottom: '24px',
+                  lineHeight: '1.5'
+                }}>
+                  Añade fondos a tu wallet para empezar a invertir en criptomonedas. 
+                  Límite máximo: <strong style={{ color: 'var(--text-accent)' }}>$10,000</strong>
+                </p>
+
+                {/* Deposit Form */}
+                <div style={{
+                  display: 'flex',
+                  gap: '16px',
+                  alignItems: 'flex-end',
+                  flexWrap: 'wrap',
+                  marginBottom: '20px'
+                }}>
+                  <div style={{ flex: '1', minWidth: '200px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: 'var(--text-secondary)',
+                      marginBottom: '8px'
+                    }}>
+                      Monto a depositar (USD)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="10000"
+                      step="0.01"
+                      value={depositAmount}
+                      onChange={(e) => {
+                        setDepositAmount(e.target.value);
+                        setDepositError(null);
+                        setDepositSuccess(false);
+                      }}
+                      placeholder="Ingrese el monto..."
+                      disabled={depositLoading}
+                      style={{
+                        width: '100%',
+                        padding: '16px 20px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: 'var(--radius-md)',
+                        color: 'var(--text-primary)',
+                        fontSize: '16px',
+                        outline: 'none',
+                        transition: 'var(--transition-smooth)',
+                        backdropFilter: 'blur(10px)'
+                      }}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.5)';
+                        e.currentTarget.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border-primary)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleDeposit}
+                    disabled={depositLoading || !depositAmount || parseFloat(depositAmount) <= 0}
+                    style={{
+                      padding: '16px 32px',
+                      background: depositLoading || !depositAmount || parseFloat(depositAmount) <= 0
+                        ? 'rgba(255, 255, 255, 0.1)'
+                        : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-md)',
+                      color: depositLoading || !depositAmount || parseFloat(depositAmount) <= 0
+                        ? 'var(--text-tertiary)'
+                        : 'white',
+                      fontSize: '16px',
+                      fontWeight: '600',
+                      cursor: depositLoading || !depositAmount || parseFloat(depositAmount) <= 0
+                        ? 'not-allowed'
+                        : 'pointer',
+                      transition: 'var(--transition-smooth)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: depositLoading || !depositAmount || parseFloat(depositAmount) <= 0
+                        ? 'none'
+                        : '0 4px 12px rgba(16, 185, 129, 0.3)',
+                      minWidth: '140px',
+                      justifyContent: 'center'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!depositLoading && depositAmount && parseFloat(depositAmount) > 0) {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!depositLoading && depositAmount && parseFloat(depositAmount) > 0) {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                      }
+                    }}
+                  >
+                    {depositLoading ? (
+                      <>
+                        <div style={{
+                          width: '16px',
+                          height: '16px',
+                          border: '2px solid transparent',
+                          borderTop: '2px solid currentColor',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        💳 Depositar
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Quick Amount Buttons */}
+                <div style={{
+                  display: 'flex',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                  marginBottom: '20px'
+                }}>
+                  <span style={{
+                    fontSize: '14px',
+                    color: 'var(--text-secondary)',
+                    fontWeight: '600',
+                    alignSelf: 'center'
+                  }}>
+                    Montos rápidos:
+                  </span>
+                  {[100, 500, 1000, 5000].map(amount => (
+                    <button
+                      key={amount}
+                      onClick={() => {
+                        setDepositAmount(amount.toString());
+                        setDepositError(null);
+                        setDepositSuccess(false);
+                      }}
+                      disabled={depositLoading}
+                      style={{
+                        padding: '8px 16px',
+                        background: 'rgba(16, 185, 129, 0.1)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        borderRadius: '20px',
+                        color: '#10b981',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: depositLoading ? 'not-allowed' : 'pointer',
+                        transition: 'var(--transition-smooth)',
+                        opacity: depositLoading ? 0.5 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!depositLoading) {
+                          e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)';
+                          e.currentTarget.style.transform = 'scale(1.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!depositLoading) {
+                          e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)';
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }
+                      }}
+                    >
+                      ${amount.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Status Messages */}
+                {depositError && (
+                  <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    color: '#ef4444',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '12px'
+                  }}>
+                    <span>⚠️</span>
+                    {depositError}
+                  </div>
+                )}
+
+                {depositSuccess && (
+                  <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    color: '#10b981',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '12px'
+                  }}>
+                    <span>✅</span>
+                    ¡Depósito realizado exitosamente! Tu balance ha sido actualizado.
+                  </div>
+                )}
+              </div>
+
+              {/* Balance Display */}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '16px',
+                minWidth: '200px'
+              }}>
+                <div style={{
+                  width: '120px',
+                  height: '120px',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 8px 32px rgba(16, 185, 129, 0.3)',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    top: '-10px',
+                    right: '-10px',
+                    width: '40px',
+                    height: '40px',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    borderRadius: '50%',
+                    filter: 'blur(15px)'
+                  }} />
+                  <span style={{
+                    fontSize: '32px',
+                    marginBottom: '4px'
+                  }}>💰</span>
+                </div>
+                
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: '#f59e0b'
+                }}>
+                  <span>⚠️</span>
+                  Límite: $10,000
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Hero Section */}
         <div style={{
           textAlign: 'center',
@@ -629,8 +1267,6 @@ export default function CryptoDashboard() {
               {currentItems.map((coin, index) => {
             const riskStyle = getRiskBadgeStyle(coin.risk_level);
             const priceStyle = getPriceChangeStyle(coin.price_change_24h);
-            const globalIndex = currentPage * itemsPerPage + index;
-            const isExpanded = expandedIndex === globalIndex;
 
             return (
               <div
@@ -696,15 +1332,6 @@ export default function CryptoDashboard() {
                       position: 'relative',
                       overflow: 'hidden'
                     }}>
-                      {coin.symbol?.charAt(0) || '₿'}
-                      <div style={{
-                        position: 'absolute',
-                        top: '-2px',
-                        right: '-2px',
-                        fontSize: '12px'
-                      }}>
-                        #{index + 1}
-                      </div>
                     </div>
 
                     <div>
@@ -757,14 +1384,12 @@ export default function CryptoDashboard() {
                       {coin.risk_level}
                     </div>
 
-                    {/* Expand Button */}
+                    {/* Ver más Button */}
                     <button
-                      onClick={() => toggleExpand(index)}
+                      onClick={() => openCryptoModal(coin)}
                       style={{
                         padding: '12px 20px',
-                        background: isExpanded 
-                          ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
-                          : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                         border: 'none',
                         borderRadius: 'var(--radius-md)',
                         color: 'white',
@@ -774,16 +1399,22 @@ export default function CryptoDashboard() {
                         transition: 'var(--transition-smooth)',
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.transform = 'scale(1.05)';
+                        e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.4)';
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
                       }}
                     >
-                      {isExpanded ? 'Ocultar' : 'Ver más'}
+                      <span>📊</span>
+                      Ver Análisis
                     </button>
                   </div>
                 </div>
@@ -883,132 +1514,6 @@ export default function CryptoDashboard() {
                     </div>
                   </div>
                 </div>
-
-                {/* Extended Metrics */}
-                {isExpanded && (
-                  <div 
-                    className="animate-fadeInUp"
-                    style={{
-                      padding: '24px',
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid var(--border-secondary)',
-                      borderRadius: 'var(--radius-md)',
-                      marginTop: '24px'
-                    }}
-                  >
-                    <h3 style={{
-                      fontSize: '20px',
-                      fontWeight: '700',
-                      color: 'var(--text-primary)',
-                      marginBottom: '24px',
-                      textAlign: 'center'
-                    }}>
-                      📊 Análisis Detallado
-                    </h3>
-
-                    <div className="grid grid-2" style={{ gap: '20px' }}>
-                      <div style={{
-                        padding: '16px',
-                        background: 'rgba(59, 130, 246, 0.1)',
-                        border: '1px solid rgba(59, 130, 246, 0.2)',
-                        borderRadius: 'var(--radius-sm)',
-                      }}>
-                        <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', margin: '0 0 4px 0' }}>
-                          <strong>🎯 Retorno Esperado:</strong>
-                        </p>
-                        <p style={{ fontSize: '18px', fontWeight: '700', color: '#3b82f6', margin: 0 }}>
-                          {coin.expected_return}%
-                        </p>
-                      </div>
-
-                      <div style={{
-                        padding: '16px',
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.2)',
-                        borderRadius: 'var(--radius-sm)',
-                      }}>
-                        <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', margin: '0 0 4px 0' }}>
-                          <strong>📊 Volatilidad:</strong>
-                        </p>
-                        <p style={{ fontSize: '18px', fontWeight: '700', color: '#ef4444', margin: 0 }}>
-                          {coin.volatility}%
-                        </p>
-                      </div>
-
-                      <div style={{
-                        padding: '16px',
-                        background: 'rgba(16, 185, 129, 0.1)',
-                        border: '1px solid rgba(16, 185, 129, 0.2)',
-                        borderRadius: 'var(--radius-sm)',
-                      }}>
-                        <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', margin: '0 0 4px 0' }}>
-                          <strong>⭐ Score Inversión:</strong>
-                        </p>
-                        <p style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', margin: 0 }}>
-                          {coin.investment_score}/10
-                        </p>
-                      </div>
-
-                      <div style={{
-                        padding: '16px',
-                        background: 'rgba(245, 158, 11, 0.1)',
-                        border: '1px solid rgba(245, 158, 11, 0.2)',
-                        borderRadius: 'var(--radius-sm)',
-                      }}>
-                        <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', margin: '0 0 4px 0' }}>
-                          <strong>⚠️ Score Riesgo:</strong>
-                        </p>
-                        <p style={{ fontSize: '18px', fontWeight: '700', color: '#f59e0b', margin: 0 }}>
-                          {coin.risk_score}/10
-                        </p>
-                      </div>
-
-                      <div style={{
-                        padding: '16px',
-                        background: 'rgba(139, 92, 246, 0.1)',
-                        border: '1px solid rgba(139, 92, 246, 0.2)',
-                        borderRadius: 'var(--radius-sm)',
-                      }}>
-                        <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', margin: '0 0 4px 0' }}>
-                          <strong>💧 Liquidez:</strong>
-                        </p>
-                        <p style={{ fontSize: '18px', fontWeight: '700', color: '#8b5cf6', margin: 0 }}>
-                          {coin.liquidity_ratio}
-                        </p>
-                      </div>
-
-                      <div style={{
-                        padding: '16px',
-                        background: 'rgba(236, 72, 153, 0.1)',
-                        border: '1px solid rgba(236, 72, 153, 0.2)',
-                        borderRadius: 'var(--radius-sm)',
-                      }}>
-                        <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', margin: '0 0 4px 0' }}>
-                          <strong>🎭 Sentimiento:</strong>
-                        </p>
-                        <p style={{ fontSize: '18px', fontWeight: '700', color: '#ec4899', margin: 0 }}>
-                          {coin.market_sentiment}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div style={{
-                      marginTop: '20px',
-                      padding: '20px',
-                      background: 'linear-gradient(135deg, rgba(100, 255, 218, 0.1) 0%, rgba(100, 255, 218, 0.05) 100%)',
-                      border: '1px solid rgba(100, 255, 218, 0.2)',
-                      borderRadius: 'var(--radius-md)',
-                      textAlign: 'center'
-                    }}>
-                      <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', margin: '0 0 8px 0' }}>
-                        <strong>🛡️ Estabilidad General:</strong>
-                      </p>
-                      <p style={{ fontSize: '24px', fontWeight: '900', color: 'var(--text-accent)', margin: 0 }}>
-                        {coin.stability_score}/10
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
                 );
               })}
@@ -1041,6 +1546,13 @@ export default function CryptoDashboard() {
           </div>
         )}
       </div>
+
+      {/* Modal de análisis detallado de criptomoneda */}
+      <CryptoDetailsModal
+        coin={selectedCoin}
+        isOpen={showCryptoModal}
+        onClose={closeCryptoModal}
+      />
 
       <style jsx>{`
         @keyframes spin {

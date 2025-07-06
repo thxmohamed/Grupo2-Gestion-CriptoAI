@@ -14,14 +14,14 @@ RUN apt-get update --allow-releaseinfo-change && apt-get install -y --no-install
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements.txt primero para aprovechar el cache de Docker
-COPY requirements.txt .
+COPY requirements-telegram.txt .
 
 # Instalar dependencias de Python
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-telegram.txt
 
 # Copiar el código de la aplicación
-COPY . .
+COPY . . 
 
 # Crear directorio para la base de datos si no existe
 RUN mkdir -p /app/data
@@ -29,15 +29,14 @@ RUN mkdir -p /app/data
 # Crear usuario no root para seguridad
 RUN useradd --create-home --shell /bin/bash app && \
     chown -R app:app /app
-USER app
-
-# Exponer el puerto 8000
-EXPOSE 8000
 
 # Variables de entorno
 ENV PYTHONPATH=/app
 ENV DATABASE_URL=sqlite:///./data/criptoai.db
 ENV ENVIRONMENT=production
 
+# Cambiar al usuario no root
+USER app
+
 # Comando para ejecutar la aplicación
-CMD ["uvicorn", "run:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["python", "telegram_bot.py"]

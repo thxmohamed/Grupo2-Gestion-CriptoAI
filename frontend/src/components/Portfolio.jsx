@@ -1,211 +1,393 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import apiClient from "../http-common";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid
+} from "recharts";
+import ReactMarkdown from "react-markdown";
 
-export default function Portfolio() {
+export default function Portfolio({ user }) {
   const navigate = useNavigate();
+  const [portfolio, setPortfolio] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [aiReport, setAiReport] = useState(null);
+
+  useEffect(() => {
+    // Redirect to login if user is not authenticated
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    setLoading(true);
+    apiClient.post(`/api/optimize-portfolio`, { id: user.user_id })
+      .then(response => {
+        setPortfolio(response.data);
+        return apiClient.post("/api/generate-portfolio-report", { id: user.user_id });
+      })
+      .then(reportResponse => {
+        setAiReport(reportResponse.data.ai_report);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Error al obtener datos:", err);
+        setError("No se pudo cargar el portafolio o el reporte.");
+        setLoading(false);
+      });
+  }, [user, navigate]);
+
+  const getRiskBadgeStyle = (riskLevel) => {
+    switch (riskLevel) {
+      case "low":
+        return {
+          background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+          color: "white",
+          icon: "🛡️"
+        };
+      case "medium":
+        return {
+          background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+          color: "white",
+          icon: "⚖️"
+        };
+      case "high":
+        return {
+          background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+          color: "white",
+          icon: "⚡"
+        };
+      default:
+        return {
+          background: "var(--bg-card)",
+          color: "var(--text-secondary)",
+          icon: "❓"
+        };
+    }
+  };
+
+  const COLORS = [
+    '#667eea', '#764ba2', '#f093fb', '#f5576c', 
+    '#4facfe', '#00f2fe', '#43e97b', '#38f9d7'
+  ];
+
+  if (!user) {
+    return null; // Will redirect to login
+  }
+
+  if (loading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        paddingTop: '80px',
+        background: 'var(--bg-primary)'
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '20px'
+        }}>
+          <div className="loading-spinner" style={{
+            width: '60px',
+            height: '60px',
+            border: '4px solid var(--border-primary)',
+            borderTop: '4px solid var(--text-accent)',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }} />
+          <p style={{ color: 'var(--text-secondary)', fontSize: '16px' }}>
+            Optimizando portafolio...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: '80px',
+        background: 'var(--bg-primary)'
+      }}>
+        <div className="card" style={{
+          padding: '40px',
+          textAlign: 'center',
+          maxWidth: '500px'
+        }}>
+          <div style={{ fontSize: '64px', marginBottom: '20px' }}>❌</div>
+          <h2 style={{ color: 'var(--text-primary)', marginBottom: '16px' }}>
+            Error al cargar datos
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>{error}</p>
+          <Link 
+            to="/"
+            className="btn btn-primary"
+            style={{ textDecoration: 'none' }}
+          >
+            Volver al inicio
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!portfolio || !portfolio.portfolio_optimization) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: '80px',
+        background: 'var(--bg-primary)'
+      }}>
+        <div className="card" style={{
+          padding: '40px',
+          textAlign: 'center',
+          maxWidth: '500px'
+        }}>
+          <div style={{ fontSize: '64px', marginBottom: '20px' }}>📊</div>
+          <h2 style={{ color: 'var(--text-primary)', marginBottom: '16px' }}>
+            Sin datos de portafolio
+          </h2>
+          <p style={{ color: 'var(--text-secondary)' }}>
+            No se encontraron datos de optimización para tu cuenta.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const { portfolio_optimization, user_profile, portfolio_metrics } = portfolio;
 
   return (
     <div style={{
       minHeight: '100vh',
       paddingTop: '100px',
       paddingBottom: '40px',
-      background: 'var(--bg-primary)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
+      background: 'var(--bg-primary)'
     }}>
-      <div className="container" style={{ textAlign: 'center' }}>
-        <div className="card" style={{
-          padding: '60px 40px',
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-primary)',
-          borderRadius: 'var(--radius-xl)',
-          maxWidth: '600px',
-          margin: '0 auto',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          {/* Background Effect */}
+      <div className="container">
+        {/* Back Button */}
+        <Link 
+          to="/dashboard"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 20px',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--text-secondary)',
+            textDecoration: 'none',
+            fontSize: '14px',
+            fontWeight: '600',
+            marginBottom: '40px',
+            transition: 'var(--transition-smooth)',
+            backdropFilter: 'blur(10px)'
+          }}
+        >
+          ← Volver al Dashboard
+        </Link>
+
+        <h1 
+          className="animate-fadeInUp crypto-glow"
+          style={{
+            fontSize: 'clamp(2rem, 5vw, 3.5rem)',
+            fontWeight: '900',
+            marginBottom: '20px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            letterSpacing: '-2px',
+            textAlign: 'center'
+          }}
+        >
+          Portafolio Optimizado
+        </h1>
+
+        {user_profile && (
           <div style={{
-            position: 'absolute',
-            top: '-50%',
-            left: '-50%',
-            width: '200%',
-            height: '200%',
-            background: 'radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 50%)',
-            borderRadius: '50%'
-          }} />
-
-          <div style={{ position: 'relative', zIndex: 2 }}>
-            <div style={{
-              width: '100px',
-              height: '100px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '48px',
-              margin: '0 auto 32px',
-              boxShadow: '0 20px 40px rgba(102, 126, 234, 0.3)'
-            }}>
-              💼
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '24px',
+            flexWrap: 'wrap',
+            marginBottom: '60px'
+          }}>
+            <div className="badge badge-success">
+              🎯 {user_profile.risk_tolerance}
             </div>
-
-            <h1 style={{
-              fontSize: 'clamp(2rem, 5vw, 3rem)',
-              fontWeight: '800',
-              marginBottom: '24px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text'
-            }}>
-              Portfolio en Desarrollo
-            </h1>
-
-            <p style={{
-              fontSize: '18px',
-              color: 'var(--text-secondary)',
-              marginBottom: '32px',
-              lineHeight: '1.6'
-            }}>
-              Esta funcionalidad está siendo desarrollada. Pronto podrás gestionar tu portafolio de criptomonedas con análisis avanzados de IA.
-            </p>
-
-            <div style={{
-              display: 'flex',
-              gap: '16px',
-              justifyContent: 'center',
-              flexWrap: 'wrap'
-            }}>
-              <button
-                onClick={() => navigate('/dashboard')}
-                style={{
-                  padding: '16px 24px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  border: 'none',
-                  borderRadius: 'var(--radius-lg)',
-                  color: 'white',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'var(--transition-smooth)',
-                  boxShadow: '0 8px 24px rgba(102, 126, 234, 0.3)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(102, 126, 234, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(102, 126, 234, 0.3)';
-                }}
-              >
-                📊 Ver Dashboard
-              </button>
-
-              <button
-                onClick={() => navigate('/')}
-                style={{
-                  padding: '16px 24px',
-                  background: 'transparent',
-                  border: '2px solid rgba(102, 126, 234, 0.3)',
-                  borderRadius: 'var(--radius-lg)',
-                  color: 'var(--text-primary)',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'var(--transition-smooth)',
-                  backdropFilter: 'blur(10px)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(102, 126, 234, 0.1)';
-                  e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.5)';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = 'rgba(102, 126, 234, 0.3)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                🏠 Volver al Inicio
-              </button>
+            <div className="badge badge-info">
+              ⏱️ {user_profile.investment_horizon}
             </div>
+            <div className="badge" style={{ background: 'var(--primary-gradient)' }}>
+              💰 ${user_profile.wallet_balance?.toLocaleString()}
+            </div>
+          </div>
+        )}
+
+        {/* Charts */}
+        <div className="grid grid-2" style={{ marginBottom: '60px' }}>
+          <div className="card" style={{ padding: '32px' }}>
+            <h2 style={{ textAlign: 'center', marginBottom: '24px', color: 'var(--text-primary)' }}>
+              🥧 Distribución del Portafolio
+            </h2>
+            <ResponsiveContainer width="100%" height={350}>
+              <PieChart>
+                <Pie
+                  data={portfolio_optimization.top_4_coins}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={120}
+                  innerRadius={60}
+                  dataKey="allocation_percentage"
+                  label={({ name, value }) => `${name}: ${value}%`}
+                >
+                  {portfolio_optimization.top_4_coins.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="card" style={{ padding: '32px' }}>
+            <h2 style={{ textAlign: 'center', marginBottom: '24px', color: 'var(--text-primary)' }}>
+              📊 Retorno vs Volatilidad
+            </h2>
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={portfolio_optimization.top_4_coins}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="symbol" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="expected_return" fill="#10b981" name="Retorno (%)" />
+                <Bar dataKey="volatility" fill="#ef4444" name="Volatilidad (%)" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Coming Soon Features */}
-        <div style={{
-          marginTop: '60px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-          gap: '24px'
-        }}>
-          {[
-            {
-              icon: "📈",
-              title: "Análisis de Rendimiento",
-              description: "Seguimiento detallado de ganancias y pérdidas"
-            },
-            {
-              icon: "🎯",
-              title: "Rebalanceo Automático",
-              description: "Optimización inteligente de tu portafolio"
-            },
-            {
-              icon: "🔔",
-              title: "Alertas Personalizadas",
-              description: "Notificaciones sobre oportunidades de mercado"
-            }
-          ].map((feature, index) => (
-            <div
-              key={index}
-              className="card"
-              style={{
-                padding: '24px',
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 'var(--radius-lg)',
-                textAlign: 'center',
-                opacity: 0.7,
-                transition: 'var(--transition-smooth)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.opacity = '1';
-                e.currentTarget.style.transform = 'translateY(-4px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.opacity = '0.7';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <div style={{
-                fontSize: '32px',
-                marginBottom: '16px'
-              }}>
-                {feature.icon}
+        {/* Crypto Cards */}
+        <div className="grid grid-2" style={{ marginBottom: '60px' }}>
+          {portfolio_optimization.top_4_coins.map((coin, index) => {
+            const riskStyle = getRiskBadgeStyle(coin.risk_level);
+            const investmentAmount = portfolio_optimization.investment_amounts?.[coin.symbol] || 0;
+
+            return (
+              <div key={index} className="card" style={{ padding: '32px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                  <h3 style={{ color: 'var(--text-primary)', fontSize: '24px', fontWeight: '800' }}>
+                    {coin.name} ({coin.symbol})
+                  </h3>
+                  <div className="badge" style={{
+                    background: riskStyle.background,
+                    color: riskStyle.color
+                  }}>
+                    {riskStyle.icon} {coin.risk_level}
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '20px',
+                  background: 'var(--primary-gradient)',
+                  borderRadius: 'var(--radius-md)',
+                  textAlign: 'center',
+                  marginBottom: '20px'
+                }}>
+                  <p style={{ color: 'white', fontSize: '14px', margin: 0, opacity: 0.9 }}>
+                    Asignación Recomendada
+                  </p>
+                  <p style={{ color: 'white', fontSize: '32px', fontWeight: '900', margin: '8px 0' }}>
+                    {coin.allocation_percentage}%
+                  </p>
+                  <p style={{ color: 'white', fontSize: '18px', fontWeight: '700', margin: 0 }}>
+                    ${investmentAmount?.toLocaleString() || '0'}
+                  </p>
+                </div>
+
+                <div className="grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                  <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>RETORNO</p>
+                    <p style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', margin: 0 }}>
+                      {coin.expected_return}%
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>VOLATILIDAD</p>
+                    <p style={{ fontSize: '18px', fontWeight: '700', color: '#ef4444', margin: 0 }}>
+                      {coin.volatility}%
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>ESTABILIDAD</p>
+                    <p style={{ fontSize: '18px', fontWeight: '700', color: '#3b82f6', margin: 0 }}>
+                      {coin.stability_score}/100
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>SENTIMIENTO</p>
+                    <p style={{ fontSize: '14px', fontWeight: '700', color: '#f59e0b', margin: 0 }}>
+                      {coin.market_sentiment}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <h3 style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                color: 'var(--text-primary)',
-                marginBottom: '12px'
-              }}>
-                {feature.title}
-              </h3>
-              <p style={{
-                fontSize: '14px',
-                color: 'var(--text-secondary)',
-                margin: 0
-              }}>
-                {feature.description}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
+
+        {/* AI Report */}
+        {aiReport && (
+          <div className="card" style={{ padding: '40px' }}>
+            <h2 style={{
+              fontSize: '32px',
+              fontWeight: '800',
+              color: 'var(--text-primary)',
+              marginBottom: '30px',
+              textAlign: 'center',
+              background: 'var(--primary-gradient)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}>
+              🤖 Reporte IA Personalizado
+            </h2>
+            <div className="markdown-report">
+              <ReactMarkdown>{aiReport}</ReactMarkdown>
+            </div>
+          </div>
+        )}
       </div>
+
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
