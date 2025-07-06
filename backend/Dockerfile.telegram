@@ -32,7 +32,6 @@ RUN useradd --create-home --shell /bin/bash app && \
 
 # Variables de entorno
 ENV PYTHONPATH=/app
-ENV DATABASE_URL=sqlite:///./data/criptoai.db
 ENV ENVIRONMENT=production
 
 # Cambiar al usuario no root

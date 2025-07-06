@@ -14,7 +14,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./criptoai.db")
+
 logger.info(f"[🔧] Token configurado: {'✅' if TELEGRAM_BOT_TOKEN else '❌'}")
+logger.info(f"[🗄️] DATABASE_URL: {DATABASE_URL}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
