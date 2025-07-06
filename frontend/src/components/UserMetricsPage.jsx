@@ -32,7 +32,16 @@ export default function UserMetricsPage() {
     setLoading(true);
     apiClient.post(`/api/optimize-portfolio`, { id: userId })
       .then(response => {
-        setPortfolio(response.data);
+        // La nueva estructura de la respuesta
+        const portfolioData = {
+          portfolio_optimization: {
+            top_4_coins: response.data.portfolio_optimization.recommended_coins || [],
+            investment_amounts: response.data.portfolio_optimization.investment_amounts || {}
+          },
+          user_profile: response.data.user_profile,
+          portfolio_metrics: response.data.portfolio_metrics
+        };
+        setPortfolio(portfolioData);
         return apiClient.post("/api/generate-portfolio-report", { id: userId });
       })
       .then(reportResponse => {
@@ -256,7 +265,7 @@ export default function UserMetricsPage() {
                   outerRadius={120}
                   innerRadius={60}
                   dataKey="allocation_percentage"
-                  label={({ name, value }) => `${name}: ${value}%`}
+                  label={({ symbol, allocation_percentage }) => `${symbol}: ${allocation_percentage}%`}
                 >
                   {portfolio_optimization.top_4_coins.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -273,7 +282,10 @@ export default function UserMetricsPage() {
               📊 Retorno vs Volatilidad
             </h2>
             <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={portfolio_optimization.top_4_coins}>
+              <BarChart data={portfolio_optimization.top_4_coins.map(coin => ({
+                ...coin,
+                expected_return: coin.expected_return * 100 // Convert to percentage
+              }))}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="symbol" />
                 <YAxis />
@@ -296,7 +308,7 @@ export default function UserMetricsPage() {
               <div key={index} className="card" style={{ padding: '32px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                   <h3 style={{ color: 'var(--text-primary)', fontSize: '24px', fontWeight: '800' }}>
-                    {coin.name} ({coin.symbol})
+                    {coin.symbol} ({coin.symbol})
                   </h3>
                   <div className="badge" style={{
                     background: riskStyle.background,
@@ -328,7 +340,7 @@ export default function UserMetricsPage() {
                   <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px' }}>
                     <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>RETORNO</p>
                     <p style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', margin: 0 }}>
-                      {coin.expected_return}%
+                      {(coin.expected_return * 100).toFixed(2)}%
                     </p>
                   </div>
                   <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>

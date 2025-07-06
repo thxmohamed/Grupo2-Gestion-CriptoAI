@@ -10,10 +10,13 @@ export default function HomePage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Obtener top 5 criptomonedas
-    apiClient.get('/api/economic-metrics/')
+    apiClient.post('/api/economic-metrics/', {})
       .then(response => {
-        const top5 = response.data.metrics
+        // La respuesta ahora tiene una estructura diferente
+        const metricsData = response.data.metrics;
+        // Convertir el objeto de métricas a un array para mantener compatibilidad
+        const metricsArray = Object.values(metricsData);
+        const top5 = metricsArray
           .sort((a, b) => b.market_cap - a.market_cap)
           .slice(0, 5);
         setTopCryptos(top5);

@@ -114,9 +114,13 @@ export default function CryptoDashboard({ user }) {
   }, [currentUser?.wallet_balance]);
 
   useEffect(() => {
-    apiClient.get(`/api/economic-metrics/`)
+    apiClient.post(`/api/economic-metrics/`, {})
       .then(response => {
-        setMetrics(response.data.metrics);
+        // La respuesta ahora tiene una estructura diferente
+        const metricsData = response.data.metrics;
+        // Convertir el objeto de métricas a un array para mantener compatibilidad
+        const metricsArray = Object.values(metricsData);
+        setMetrics(metricsArray);
         setLoading(false);
       })
       .catch(err => {
@@ -918,7 +922,7 @@ export default function CryptoDashboard({ user }) {
               letterSpacing: '-2px'
             }}
           >
-            Top 20 Criptomonedas
+            Criptomonedas Actuales
           </h1>
           <p style={{
             fontSize: '18px',

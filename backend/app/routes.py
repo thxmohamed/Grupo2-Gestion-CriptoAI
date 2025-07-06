@@ -414,7 +414,7 @@ async def get_economic_metrics(db: Session = Depends(get_db)):
         # Usar el repositorio a través del servicio para obtener métricas ya calculadas
         symbols = economic_analyzer.get_all_symbols()
         economic_metrics = {}
-        for symbol in symbols
+        for symbol in symbols:
             economic_metrics[symbol] = economic_analyzer.get_coin_metrics(symbol)
         
         if not economic_metrics:
