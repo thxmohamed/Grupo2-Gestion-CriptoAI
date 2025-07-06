@@ -131,8 +131,6 @@ class HistoricalDataRequest(BaseModel):
     days: int = 14  # Días de datos históricos a obtener
     limit: int = 10
 
-class EconomicMetricRequest(BaseModel):
-    symbol: str
 
 # Dependency para obtener la sesión de base de datos
 def get_db():
@@ -407,14 +405,17 @@ async def get_market_top_5():
 
 
 @router.post("/economic-metrics")
-async def get_economic_metrics(request: EconomicMetricRequest, db: Session = Depends(get_db)):
+async def get_economic_metrics(db: Session = Depends(get_db)):
     """
     Endpoint que retorna métricas cuantitativas de inversión y riesgo ya calculadas desde la base de datos.
     Respeta la arquitectura por capas usando el repositorio.
     """
     try:
         # Usar el repositorio a través del servicio para obtener métricas ya calculadas
-        economic_metrics = economic_analyzer.get_coin_metrics(request.symbol)
+        symbols = economic_analyzer.get_all_symbols()
+        economic_metrics = {}
+        for symbol in symbols
+            economic_metrics[symbol] = economic_analyzer.get_coin_metrics(symbol)
         
         if not economic_metrics:
             raise HTTPException(status_code=404, detail="No se encontraron métricas económicas para el símbolo proporcionado")
