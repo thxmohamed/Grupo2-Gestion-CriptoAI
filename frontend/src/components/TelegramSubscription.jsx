@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import apiClient from '../http-common';
 
 export default function TelegramSubscription({ user }) {
   const [showModal, setShowModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // Manejar escape y prevenir scroll del body
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && showModal) {
+      if (e.key === 'Escape' && (showModal || showConfirmModal)) {
         setShowModal(false);
+        setShowConfirmModal(false);
       }
     };
 
-    if (showModal) {
+    if (showModal || showConfirmModal) {
       document.addEventListener('keydown', handleEscape);
       // Prevenir scroll del body cuando el modal está abierto
       document.body.style.overflow = 'hidden';
@@ -23,14 +28,18 @@ export default function TelegramSubscription({ user }) {
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [showModal]);
+  }, [showModal, showConfirmModal]);
 
   const handleSubscribe = () => {
-    setShowModal(true);
+    setShowConfirmModal(true);
   };
 
   const handleCloseModal = () => {
     setShowModal(false);
+  };
+
+  const handleCloseConfirmModal = () => {
+    setShowConfirmModal(false);
   };
 
   const handleOpenTelegram = () => {
@@ -38,8 +47,54 @@ export default function TelegramSubscription({ user }) {
     window.open('https://t.me/cryptoadvisorGrupo2_bot', '_blank');
   };
 
-  const handleConfirmSubscription = () => {
-    setIsSubscribed(true);
+  const handleConfirmSubscription = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Obtener userData del localStorage
+      const userData = JSON.parse(localStorage.getItem('userData'));
+      if (!userData || !userData.user_id) {
+        throw new Error('No se encontró información del usuario. Por favor, inicia sesión nuevamente.');
+      }
+
+      // Obtener los datos del usuario desde la API
+      const userResponse = await apiClient.get(`/api/user-profiles/by-id/${userData.user_id}`);
+      const userProfile = userResponse.data;
+
+      // Preparar los datos para la suscripción
+      const subscriptionData = {
+        user_id: userProfile.user_id,
+        email: userProfile.email,
+        phone: userProfile.telefono || '',
+        notification_type: "email",
+        frequency: "daily",
+        risk_tolerance: userProfile.risk_tolerance || "moderate",
+        investment_amount: userProfile.investment_amount || 1000,
+        investment_horizon: userProfile.investment_horizon || "medium",
+        preferred_sectors: []
+      };
+
+      // Llamar a la API de suscripción
+      const subscriptionResponse = await apiClient.post('/api/subscribe', subscriptionData);
+      
+      if (subscriptionResponse.data.success) {
+        setIsSubscribed(true);
+        setShowConfirmModal(false);
+        setShowModal(true); // Mostrar el modal de instrucciones de Telegram
+      } else {
+        throw new Error(subscriptionResponse.data.message || 'Error al procesar la suscripción');
+      }
+
+    } catch (error) {
+      console.error('Error en suscripción:', error);
+      setError(error.response?.data?.detail || error.message || 'Error al procesar la suscripción');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinalConfirmation = () => {
     setShowModal(false);
   };
 
@@ -93,6 +148,208 @@ export default function TelegramSubscription({ user }) {
           {isSubscribed ? 'Suscrito' : 'Suscribirse'}
         </button>
       </div>
+
+      {/* Modal de confirmación */}
+      {showConfirmModal && createPortal(
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            backdropFilter: 'blur(8px)'
+          }}
+          onClick={handleCloseConfirmModal}
+        >
+          <div 
+            style={{
+              background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-primary) 100%)',
+              borderRadius: '20px',
+              padding: '40px',
+              maxWidth: '500px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              position: 'relative',
+              border: '2px solid var(--border-primary)',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              backdropFilter: 'blur(20px)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Botón de cerrar */}
+            <button
+              onClick={handleCloseConfirmModal}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                fontSize: '24px',
+                cursor: 'pointer',
+                padding: '8px',
+                borderRadius: '50%',
+                transition: 'var(--transition-smooth)',
+                zIndex: 1
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.transform = 'scale(1.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              ×
+            </button>
+
+            {/* Contenido del modal */}
+            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>🤔</div>
+              <h2 style={{
+                fontSize: '24px',
+                fontWeight: '800',
+                marginBottom: '12px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}>
+                Confirmar Suscripción
+              </h2>
+              <p style={{
+                color: 'var(--text-secondary)',
+                fontSize: '16px',
+                lineHeight: '1.6',
+                marginBottom: '24px'
+              }}>
+                ¿Estás seguro que te quieres suscribir a las notificaciones de Telegram?
+                <br />
+                Recibirás reportes diarios sobre el mercado de criptomonedas.
+              </p>
+            </div>
+
+            {/* Mostrar error si existe */}
+            {error && (
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid #ef4444',
+                borderRadius: '12px',
+                padding: '16px',
+                marginBottom: '24px',
+                color: '#ef4444',
+                fontSize: '14px',
+                textAlign: 'center'
+              }}>
+                {error}
+              </div>
+            )}
+
+            {/* Botones de acción */}
+            <div style={{
+              display: 'flex',
+              gap: '16px',
+              justifyContent: 'center',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={handleCloseConfirmModal}
+                disabled={loading}
+                style={{
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  border: '2px solid var(--border-primary)',
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.5 : 1,
+                  transition: 'var(--transition-smooth)',
+                  minWidth: '120px'
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.transform = 'scale(1.02)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }
+                }}
+              >
+                No, cancelar
+              </button>
+
+              <button
+                onClick={handleConfirmSubscription}
+                disabled={loading}
+                style={{
+                  background: loading ? 'var(--bg-secondary)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  fontSize: '16px',
+                  fontWeight: '700',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
+                  transition: 'var(--transition-smooth)',
+                  minWidth: '120px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(16, 185, 129, 0.4)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }
+                }}
+              >
+                {loading ? (
+                  <>
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      border: '2px solid transparent',
+                      borderTop: '2px solid white',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <span>✅</span>
+                    Sí, suscribir
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Modal de suscripción usando Portal */}
       {showModal && createPortal(
@@ -344,7 +601,7 @@ export default function TelegramSubscription({ user }) {
                 </button>
                 
                 <button
-                  onClick={handleConfirmSubscription}
+                  onClick={handleFinalConfirmation}
                   style={{
                     background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                     color: 'white',
@@ -434,6 +691,15 @@ export default function TelegramSubscription({ user }) {
           }
           100% {
             background-position: 200px 0;
+          }
+        }
+        
+        @keyframes spin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
           }
         }
       `}</style>
