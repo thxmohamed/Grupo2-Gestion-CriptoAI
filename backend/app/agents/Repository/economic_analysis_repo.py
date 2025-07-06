@@ -124,7 +124,7 @@ class EconomicAnalysisRepo:
             List[str]: Lista de símbolos únicos.
         """
         try:
-            querytext = "SELECT DISTINCT symbol FROM crypto_metrics"
+            querytext = "SELECT DISTINCT symbol FROM historical_prices"
             symbols = self.db.execute(text(querytext)).scalars().all()
             return [symbol.upper() for symbol in symbols]
         except Exception as e:
