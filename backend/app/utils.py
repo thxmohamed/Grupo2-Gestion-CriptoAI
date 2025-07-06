@@ -381,7 +381,8 @@ class CoinGeckoAPIHelper:
             params = {
                 'vs_currency': vs_currency,
                 'days': days,
-                'interval': interval
+                'interval': interval,
+                'market_cap': 'true'
             }
             
             return await self._make_request(f"/coins/{coin_id}/market_chart", params)
@@ -485,7 +486,8 @@ class DataProcessor:
                     'quote_volume': float(kline[7]),
                     'trades_count': int(kline[8]),
                     'taker_buy_volume': float(kline[9]),
-                    'taker_buy_quote_volume': float(kline[10])
+                    'taker_buy_quote_volume': float(kline[10]),
+                    'market_cap': None
                 })
             except (ValueError, IndexError) as e:
                 logger.warning(f"Error procesando kline: {e}")
@@ -494,27 +496,81 @@ class DataProcessor:
         return processed
     
     @staticmethod
-    def process_coingecko_prices(prices: List[List], symbol: str) -> List[Dict[str, Any]]:
+    def process_coingecko_prices(prices: List[List], market_caps: List[List], symbol: str) -> List[Dict[str, Any]]:
         """
-        Procesa precios de CoinGecko (formato [timestamp, price]) a estructura estándar
+        Procesa los datos históricos de precio y capitalización de mercado de CoinGecko
+        (formato [timestamp, value]) en una estructura unificada y ordenada.
+
+        Args:
+            prices (List[List]): Lista de pares [timestamp, price].
+            market_caps (List[List]): Lista de pares [timestamp, market_cap_value].
+            symbol (str): Símbolo de la criptomoneda (ej. 'BTC').
+
+        Returns:
+            List[Dict[str, Any]]: Lista de diccionarios con 'timestamp', 'close',
+                                'market_cap', y otros campos relevantes, ordenados por timestamp.
         """
-        processed = []
+        # Usaremos un diccionario para agrupar los datos por timestamp
+        # Esto ayuda a manejar si hay ligeras diferencias en los timestamps entre prices y market_caps
+        # Aunque la API de CoinGecko suele ser muy consistente en esto.
+        temp_data = {}
+
+        # 1. Procesar precios
         for entry in prices:
             try:
-                ts, price = entry
-                processed.append({
-                    'symbol': symbol.upper(),
-                    'source': 'coingecko',
-                    'timestamp': datetime.fromtimestamp(ts / 1000),
-                    'close': float(price),
-                    'open': None,
-                    'high': None,
-                    'low': None,
-                    'volume': None
-                })
+                ts_ms, price_value = entry
+                ts_dt = datetime.fromtimestamp(ts_ms / 1000) # Convertir milisegundos a segundos y luego a datetime
+                # Usamos el timestamp como clave para agrupar los datos
+                if ts_dt not in temp_data:
+                    temp_data[ts_dt] = {
+                        'symbol': symbol.upper(),
+                        'source': 'coingecko',
+                        'timestamp': ts_dt,
+                        'close': float(price_value),
+                        'market_cap': None, # Inicializamos como None
+                        'open': None,
+                        'high': None,
+                        'low': None,
+                        'volume': None # La API de market_chart también devuelve 'total_volumes' que podrías añadir aquí
+                    }
+                else:
+                    # Actualizar el precio si el timestamp ya existe (esto no debería pasar con datos limpios)
+                    temp_data[ts_dt]['close'] = float(price_value)
             except Exception as e:
-                logger.warning(f"Error procesando precio CoinGecko: {e}")
-        return processed
+                logger.warning(f"Error procesando entrada de precio de CoinGecko {entry}: {e}")
+                continue # Saltar esta entrada y continuar
+
+        # 2. Procesar capitalización de mercado
+        for entry in market_caps:
+            try:
+                ts_ms, mc_value = entry
+                ts_dt = datetime.fromtimestamp(ts_ms / 1000)
+
+                if ts_dt in temp_data:
+                    temp_data[ts_dt]['market_cap'] = float(mc_value)
+                else:
+                    # Si hay una capitalización de mercado sin un precio correspondiente,
+                    # puedes decidir si la incluyes o la descartas. Aquí la incluimos.
+                    temp_data[ts_dt] = {
+                        'symbol': symbol.upper(),
+                        'source': 'coingecko',
+                        'timestamp': ts_dt,
+                        'close': None, # No hay precio para este timestamp
+                        'market_cap': float(mc_value),
+                        'open': None,
+                        'high': None,
+                        'low': None,
+                        'volume': None
+                    }
+            except Exception as e:
+                logger.warning(f"Error procesando entrada de capitalización de mercado de CoinGecko {entry}: {e}")
+                continue
+
+        # 3. Convertir el diccionario a una lista de diccionarios y ordenar por timestamp
+        processed_data = list(temp_data.values())
+        processed_data.sort(key=lambda x: x['timestamp'])
+
+        return processed_data
 
     
     @staticmethod

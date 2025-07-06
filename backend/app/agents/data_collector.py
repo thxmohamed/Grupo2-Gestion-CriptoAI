@@ -51,7 +51,8 @@ class DataCollectorAgent:
                     high=p.get('high'),
                     low=p.get('low'),
                     close=p.get('close') or p.get('price'),
-                    volume=p.get('volume')
+                    volume=p.get('volume'),
+                    market_cap=p.get('market_cap')
                 )
                 db.add(record)
 
@@ -148,7 +149,8 @@ class DataCollectorAgent:
                 days=str(days),
                 interval='daily'
             )
-            return self.processor.process_coingecko_prices(history['prices'], symbol)
+            #print(f"Histórico CoinGecko para {symbol}: {history}")
+            return self.processor.process_coingecko_prices(history['prices'], history['market_caps'], symbol)
         except Exception as e:
             logger.error(f"Error histórico CoinGecko para {symbol}: {e}")
             return []
@@ -173,7 +175,7 @@ class DataCollectorAgent:
             logger.error(f"Error histórico Binance para {symbol}: {e}")
             return []
 
-    async def collect_historical_data(self, db: Session, days: int = 14, limit: int = 10):
+    async def collect_historical_data(self, db: Session, days: int = 365, limit: int = 10):
         logger.info("Iniciando recolección histórica automática")
 
         # Limpiar toda la tabla una sola vez
@@ -214,8 +216,8 @@ class DataCollectorAgent:
                     continue
 
                 try:
-                    #cg = await self.collect_coingecko_history(coin_id, symbol)
-                    #self.save_historical_prices(db, cg)
+                    cg = await self.collect_coingecko_history(coin_id, symbol, days)
+                    self.save_historical_prices(db, cg)
 
                     bn = await self.collect_binance_history(binance_symbol, days)
                     self.save_historical_prices(db, bn)
@@ -226,18 +228,3 @@ class DataCollectorAgent:
             return "Históricos guardados correctamente"
         except Exception as outer:
             logger.error(f"Fallo la recolección automática de top monedas: {outer}")
-
-    def get_data_from_db(self, db: Session, symbol: str, source: str) -> List[float]:
-        """
-        Obtiene datos históricos de la base de datos para un símbolo y fuente específicos.
-        """
-        try:
-            querytext = "SELECT close FROM historical_prices WHERE symbol = :symbol AND source = :source ORDER BY timestamp"
-            economic_metrics_decimal = db.execute(
-                text(querytext),
-                {"symbol": symbol, "source": source}
-            ).scalars().all()
-            return [float(price) for price in economic_metrics_decimal]
-        except Exception as e:
-            logger.error(f"Error obteniendo datos de DB para {symbol} ({source}): {e}")
-            return []

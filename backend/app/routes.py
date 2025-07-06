@@ -9,8 +9,8 @@ import json
 import logging
 
 from app.agents.data_collector import DataCollectorAgent
-from app.agents.economic_analysis import EconomicAnalysisAgent
-from app.agents.portfolio_optimizer import PortfolioOptimizationAgent
+from app.agents.Services.economic_analysis import EconomicAnalysisAgent
+from app.agents.Services.portfolio_optimizer import PortfolioOptimizationAgent
 from app.agents.communication import CommunicationAgent
 from app.models import UserProfile, Subscription
 from app import SessionLocal
@@ -155,10 +155,7 @@ async def update_crypto_data(background_tasks: BackgroundTasks):
     """
     try:
         # Recopilar datos de APIs externas
-        crypto_data = await data_collector.collect_all_data()
-        
-        if not crypto_data.get('coingecko') and not crypto_data.get('binance'):
-            raise HTTPException(status_code=500, detail="No se pudieron obtener datos de las APIs")
+        crypto_data = await data_collector.collect_historical_data(SessionLocal())
         
         # Procesar datos en background
         background_tasks.add_task(economic_analyzer.analyze_and_store, crypto_data)
@@ -189,18 +186,9 @@ async def get_portfolio_recommendation(request: PortfolioRequestModel):
             "preferred_sectors": request.preferred_sectors
         }
         
-        # Obtener métricas relevantes para el usuario
-        relevant_coins = economic_analyzer.get_user_relevant_metrics(user_data)
-        
-        if not relevant_coins:
-            raise HTTPException(
-                status_code=404, 
-                detail="No se encontraron monedas adecuadas para tu perfil. Intenta actualizar los datos primero."
-            )
-        
         # Optimizar portfolio
-        optimization_result = await portfolio_optimizer.optimize_portfolio(user_data, relevant_coins)
-        
+        optimization_result = await portfolio_optimizer.optimize_portfolio_with_economic_metrics(user_data)
+        #print("Resultado de optimización:", optimization_result)
         if not optimization_result.get('success'):
             raise HTTPException(
                 status_code=500, 
@@ -281,30 +269,33 @@ async def health_check():
 @router.get("/market-overview")
 async def get_market_overview():
     """
-    ✅ ENDPOINT MEJORADO - Resumen general del mercado con caché y manejo de rate limits
+    Endpoint que retorna resumen general del mercado usando datos ya calculados desde la base de datos.
+    Respeta la arquitectura por capas y formato consistente del sistema.
     """
     try:
-        # Usar el helper de CoinGecko mejorado con caché
-        from app.utils import coingecko_helper
-        
-        market_data = await coingecko_helper.get_coins_markets(
-            vs_currency='usd',
-            order='market_cap_desc',
-            per_page=20,
-            page=1,
-            price_change_percentage='24h'
-        )
+        # Usar el repositorio a través del servicio para obtener métricas ya calculadas
+        market_data = economic_analyzer.get_coins_metrics()
         
         if not market_data:
-            raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado")
+            raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado desde la base de datos")
         
-        # Procesar y resumir datos
-        top_10 = market_data[:20]
+        # Convertir diccionario a lista si es necesario y tomar top 10
+        if isinstance(market_data, dict):
+            market_data_list = list(market_data.values())
+        else:
+            market_data_list = market_data
+            
+        # Ordenar por market_cap y tomar top 10
+        top_10 = sorted(market_data_list, key=lambda x: float(x.get('market_cap', 0)), reverse=True)[:10]
         
-        total_market_cap = sum(coin.get('market_cap', 0) for coin in top_10)
-        avg_price_change = sum(coin.get('price_change_percentage_24h', 0) for coin in top_10) / len(top_10)
+        if not top_10:
+            raise HTTPException(status_code=503, detail="No hay datos suficientes en la base de datos")
         
-        bullish_count = len([coin for coin in top_10 if coin.get('price_change_percentage_24h', 0) > 0])
+        # Calcular métricas del resumen
+        total_market_cap = sum(float(coin.get('market_cap', 0)) for coin in top_10)
+        avg_price_change = sum(float(coin.get('price_change_24h', 0)) for coin in top_10) / len(top_10)
+        
+        bullish_count = len([coin for coin in top_10 if float(coin.get('price_change_24h', 0)) > 0])
         bearish_count = len(top_10) - bullish_count
         
         return {
@@ -313,11 +304,16 @@ async def get_market_overview():
                 "top_cryptocurrencies": [
                     {
                         "symbol": coin['symbol'].upper(),
-                        "name": coin['name'],
-                        "current_price": coin.get('current_price', 0),
-                        "market_cap": coin.get('market_cap', 0),
-                        "price_change_24h": coin.get('price_change_percentage_24h', 0),
-                        "volume_24h": coin.get('total_volume', 0)
+                        "current_price": float(coin.get('current_price', 0)),
+                        "market_cap": float(coin.get('market_cap', 0)),
+                        "price_change_24h": float(coin.get('price_change_24h', 0)),
+                        "volume_24h": float(coin.get('volume_24h', 0)),
+                        "investment_score": float(coin.get('investment_score', 0)),
+                        "risk_score": float(coin.get('risk_score', 0)),
+                        "stability_score": float(coin.get('stability_score', 0)),
+                        "growth_potential": float(coin.get('growth_potential', 0)),
+                        "market_sentiment": coin.get('market_sentiment', 'neutral'),
+                        "risk_level": coin.get('risk_level', 'medium')
                     }
                     for coin in top_10
                 ],
@@ -330,8 +326,8 @@ async def get_market_overview():
                 }
             },
             "timestamp": datetime.now().isoformat(),
-            "fixed": True,
-            "note": "Datos obtenidos directamente de CoinGecko API"
+            "data_source": "database",
+            "note": "Datos obtenidos de métricas calculadas en la base de datos"
         }
         
     except HTTPException:
@@ -342,41 +338,54 @@ async def get_market_overview():
 @router.get("/market-top-5")
 async def get_market_top_5():
     """
-    Retorna el Top 5 de criptomonedas con mayor capitalización del mercado.
+    Endpoint que retorna el Top 5 de criptomonedas con mayor capitalización del mercado usando datos ya calculados desde la base de datos.
+    Respeta la arquitectura por capas y formato consistente del sistema.
     """
     try:
-        from app.utils import coingecko_helper
-
-        market_data = await coingecko_helper.get_coins_markets(
-            vs_currency='usd',
-            order='market_cap_desc',
-            per_page=5,  # 🔧 Solo pedimos 5 directamente
-            page=1,
-            price_change_percentage='24h'
-        )
-
+        # Usar el repositorio a través del servicio para obtener métricas ya calculadas
+        market_data = economic_analyzer.get_coins_metrics()
+        
         if not market_data:
-            raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado")
-
-        total_market_cap = sum(coin.get('market_cap', 0) for coin in market_data)
-        avg_price_change = sum(coin.get('price_change_percentage_24h', 0) for coin in market_data) / len(market_data)
-
-        bullish_count = len([coin for coin in market_data if coin.get('price_change_percentage_24h', 0) > 0])
-        bearish_count = len(market_data) - bullish_count
-
+            raise HTTPException(status_code=503, detail="No se pueden obtener datos del mercado desde la base de datos")
+        
+        # Convertir diccionario a lista si es necesario y tomar top 5
+        if isinstance(market_data, dict):
+            market_data_list = list(market_data.values())
+        else:
+            market_data_list = market_data
+            
+        # Ordenar por market_cap y tomar top 5
+        top_5 = sorted(market_data_list, key=lambda x: float(x.get('market_cap', 0)), reverse=True)[:5]
+        
+        if not top_5:
+            raise HTTPException(status_code=503, detail="No hay datos suficientes en la base de datos")
+        
+        # Calcular métricas del resumen
+        total_market_cap = sum(float(coin.get('market_cap', 0)) for coin in top_5)
+        avg_price_change = sum(float(coin.get('price_change_24h', 0)) for coin in top_5) / len(top_5)
+        
+        bullish_count = len([coin for coin in top_5 if float(coin.get('price_change_24h', 0)) > 0])
+        bearish_count = len(top_5) - bullish_count
+        
         return {
             "success": True,
             "data": {
                 "top_5_cryptocurrencies": [
                     {
                         "symbol": coin['symbol'].upper(),
-                        "name": coin['name'],
-                        "current_price": coin.get('current_price', 0),
-                        "market_cap": coin.get('market_cap', 0),
-                        "price_change_24h": coin.get('price_change_percentage_24h', 0),
-                        "volume_24h": coin.get('total_volume', 0)
+                        "name": coin.get('name', coin['symbol'].upper()),  # Usar el símbolo como fallback si no hay nombre
+                        "current_price": float(coin.get('current_price', 0)),
+                        "market_cap": float(coin.get('market_cap', 0)),
+                        "price_change_24h": float(coin.get('price_change_24h', 0)),
+                        "volume_24h": float(coin.get('volume_24h', 0)),
+                        "investment_score": float(coin.get('investment_score', 0)),
+                        "risk_score": float(coin.get('risk_score', 0)),
+                        "stability_score": float(coin.get('stability_score', 0)),
+                        "growth_potential": float(coin.get('growth_potential', 0)),
+                        "market_sentiment": coin.get('market_sentiment', 'neutral'),
+                        "risk_level": coin.get('risk_level', 'medium')
                     }
-                    for coin in market_data
+                    for coin in top_5
                 ],
                 "market_summary": {
                     "total_market_cap_top5": total_market_cap,
@@ -386,9 +395,11 @@ async def get_market_top_5():
                     "market_sentiment": "bullish" if bullish_count > bearish_count else "bearish" if bearish_count > bullish_count else "neutral"
                 }
             },
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "data_source": "database",
+            "note": "Datos obtenidos de métricas calculadas en la base de datos"
         }
-
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -398,27 +409,28 @@ async def get_market_top_5():
 @router.post("/economic-metrics")
 async def get_economic_metrics(request: EconomicMetricRequest, db: Session = Depends(get_db)):
     """
-    Endpoint que retorna métricas cuantitativas de inversión y riesgo para todas las monedas del market overview.
-    Mejorado con manejo de errores y caché.
+    Endpoint que retorna métricas cuantitativas de inversión y riesgo ya calculadas desde la base de datos.
+    Respeta la arquitectura por capas usando el repositorio.
     """
     try:
+        # Usar el repositorio a través del servicio para obtener métricas ya calculadas
+        economic_metrics = economic_analyzer.get_coin_metrics(request.symbol)
         
-        market_data = data_collector.get_data_from_db(db, request.symbol, "binance")
-        if not market_data:
-            raise HTTPException(status_code=404, detail="No se encontraron datos para el símbolo proporcionado")
-        # Calcular métricas económicas usando el agente
-        economic_metrics = economic_analyzer.calculate_economic_metrics(market_data)
         if not economic_metrics:
             raise HTTPException(status_code=404, detail="No se encontraron métricas económicas para el símbolo proporcionado")
+        
         # Retornar métricas con timestamp y fuente de datos
         return {
             "success": True,
             "metrics": economic_metrics,
             "timestamp": datetime.now().isoformat(),
             "data_source": "database",
-            "note": "Datos obtenidos de la base de datos"
+            "note": "Métricas obtenidas directamente de la base de datos"
         }
         
+    except ValueError as e:
+        # Error específico cuando no se encuentra el símbolo
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo métricas económicas: {str(e)}")
 
@@ -962,11 +974,12 @@ async def collect_historical_data(request: HistoricalDataRequest, db: Session = 
         
         # Recolectar datos históricos usando el agente de recolección de datos
         historical_data = await data_collector.collect_historical_data(db, request.days, request.limit)
+
         
         if not historical_data:
             raise HTTPException(status_code=503, detail="No se pudieron obtener datos históricos")
         
-        
+
         return {
             "success": True,
             "message": f"Datos históricos guardados para {len(historical_data)} símbolos",
@@ -977,3 +990,28 @@ async def collect_historical_data(request: HistoricalDataRequest, db: Session = 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error recolectando datos históricos: {str(e)}")
+    
+@router.post("/calculate-and-save-metrics")
+async def calculate_and_save_metrics():
+    """
+    Endpoint para calcular y guardar métricas económicas de criptomonedas.
+    Requiere un ID numérico del usuario para asociar los datos.
+    """
+    try:
+        
+        # Calcular métricas económicas usando el analizador económico
+        metrics_result = economic_analyzer.calculate_and_save_metrics()
+        
+        if not metrics_result:
+            raise HTTPException(status_code=503, detail=metrics_result.get('message', 'Error al calcular métricas'))
+        
+        return {
+            "success": True,
+            "message": f"Métricas guardadas con éxito",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculando y guardando métricas: {str(e)}")

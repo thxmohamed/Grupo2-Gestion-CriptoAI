@@ -5,7 +5,7 @@ from datetime import datetime
 import logging
 
 from app.agents.data_collector import DataCollectorAgent
-from app.agents.economic_analysis import EconomicAnalysisAgent
+from app.agents.Services.economic_analysis import EconomicAnalysisAgent
 from app.agents.communication import CommunicationAgent
 from app import SessionLocal
 
@@ -33,7 +33,7 @@ class SchedulerService:
             logger.info("Iniciando actualización programada de datos de criptomonedas")
             
             # Recopilar datos de APIs
-            crypto_data = await self.data_collector.collect_all_data()
+            crypto_data = await self.data_collector.collect_historical_data(db=SessionLocal(), days=365, limit=100)
             
             if crypto_data.get('coingecko') or crypto_data.get('binance'):
                 # Analizar y guardar datos

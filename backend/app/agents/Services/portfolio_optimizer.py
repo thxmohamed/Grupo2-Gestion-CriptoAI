@@ -1,12 +1,11 @@
 from typing import List, Dict, Any, Tuple
 import numpy as np
-import pulp # Importar la biblioteca PuLP
+from ..Repository.portfolio_optimizer_repo import PortfolioOptimizerRepo
 import json
-import httpx
 from datetime import datetime
-from sqlalchemy.orm import Session
-from app import SessionLocal
 from app.models import PortfolioRecommendation
+from .economic_analysis import EconomicAnalysisAgent
+import pulp
 
 class PortfolioOptimizationAgent:
     """
@@ -17,7 +16,8 @@ class PortfolioOptimizationAgent:
     """
     
     def __init__(self):
-        self.db = SessionLocal()
+        self.repo = PortfolioOptimizerRepo()
+        self.economic_analyzer = EconomicAnalysisAgent()
 
     def _map_user_profile_to_constraints(self, user_profile: Dict[str, Any]) -> Dict[str, float]:
         """
@@ -31,7 +31,7 @@ class PortfolioOptimizationAgent:
             Dict[str, float]: Diccionario con el capital total y el límite de riesgo.
         """
         risk_tolerance = user_profile.get('risk_tolerance', 'moderate')
-        investment_amount = user_profile.get('investment_amount', 1000.0) # Asegurar float
+        investment_amount = float(user_profile.get('investment_amount', 1000.0)) # Asegurar float
         
         # Define el límite de riesgo 'r' basado en la tolerancia del usuario
         # Estos valores son umbrales que deberás ajustar a tus métricas de riesgo.
@@ -62,22 +62,24 @@ class PortfolioOptimizationAgent:
         """
         # === c_i (Costo) ===
         # El costo es simplemente el precio actual de la moneda.
-        # Asegúrate de que no sea cero para evitar divisiones por cero.
-        c_i = coin.get('current_price', 0.0001) 
+        # Convertir a float para evitar problemas con Decimal
+        c_i = float(coin.get('current_price', 0.0001)) 
         if c_i <= 0: # Evitar costos negativos o cero irreales
             c_i = 0.0001
             
         # === r_i (Riesgo) ===
         # Usamos el 'risk_score' directamente, normalizado a 0-100.
-        r_i = coin.get('risk_score', 50.0)
+        # Convertir a float para evitar problemas con Decimal
+        r_i = float(coin.get('risk_score', 50.0))
         
         # === v_i (Deseabilidad / Valor) ===
         # Aquí combinaremos investment_score, expected_return, stability_score
         # y market_sentiment, ajustados por el perfil del usuario.
+        # Convertir todos los valores a float
         
-        investment_score = coin.get('investment_score', 50.0)
-        expected_return = coin.get('expected_return', 0.0) # %
-        stability_score = coin.get('stability_score', 50.0)
+        investment_score = float(coin.get('investment_score', 50.0))
+        expected_return = float(coin.get('expected_return', 0.0)) # %
+        stability_score = float(coin.get('stability_score', 50.0))
         market_sentiment = coin.get('market_sentiment', 'neutral')
         
         # Ajuste base de v_i
@@ -107,9 +109,9 @@ class PortfolioOptimizationAgent:
         
         # Ajustes por horizonte de inversión
         if investment_horizon == 'short':
-            v_i += (coin.get('liquidity_ratio', 0) * 20) # Liquidez muy importante
+            v_i += (float(coin.get('liquidity_ratio', 0)) * 20) # Liquidez muy importante
         elif investment_horizon == 'long':
-            v_i += (coin.get('market_cap', 0) / 1e9) * 0.05 # Favorecer grandes capitalizaciones para largo plazo
+            v_i += (float(coin.get('market_cap', 0)) / 1e9) * 0.05 # Favorecer grandes capitalizaciones para largo plazo
             
         # Asegurarse de que v_i sea positivo para la maximización
         # Un v_i negativo haría que el optimizador no quiera seleccionar esa moneda.
@@ -186,7 +188,7 @@ class PortfolioOptimizationAgent:
         # Opcion 2: Con límite de monedas (MILP, más práctico para recomendaciones)
         # Por ahora, iremos con la Opción 1 para mantenerlo PL puro.
         # Si quieres MILP, descomenta y adapta la siguiente lógica:
-        """
+        
         # Crear variables binarias para selección de moneda
         binary_vars = {}
         for coin in available_coins:
@@ -194,13 +196,13 @@ class PortfolioOptimizationAgent:
             binary_vars[symbol] = pulp.LpVariable(f"Select_{symbol}", 0, 1, pulp.LpBinary)
             # Si x_i > 0, entonces binary_vars[symbol] debe ser 1
             # Multiplicar por un número grande (M) para forzar la relación
-            prob += coin_vars[symbol] <= binary_vars[symbol] * 1 # small epsilon to allow for very small values
+            prob += coin_vars[symbol] <= binary_vars[symbol] * (1 + np.finfo(float).eps)  # small epsilon to allow for very small values
             # Puedes ajustar el epsilon o M para tu caso de uso.
             # prob += coin_vars[symbol] <= binary_vars[symbol] # If we dont care about small values near 0
             
-        # Suma de variables binarias <= 4
-        prob += pulp.lpSum([binary_vars[s] for s in binary_vars]) <= 4, "Max 4 Coins Selected"
-        """
+        # Suma de variables binarias >= 2
+        prob += pulp.lpSum([binary_vars[s] for s in binary_vars]) >= 2, "Min 2 coins Selected"
+        
 
         # 5. Resolver el problema
         try:
@@ -216,7 +218,7 @@ class PortfolioOptimizationAgent:
             # 6. Extraer resultados
             recommended_coins_lp = []
             allocation_percentages_lp = {}
-            total_investment = user_profile.get('investment_amount', 1000.0)
+            total_investment = float(user_profile.get('investment_amount', 1000.0))
             
             for coin in available_coins:
                 symbol = coin['symbol']
@@ -248,26 +250,25 @@ class PortfolioOptimizationAgent:
             final_recommended_coins = [
                 {
                     'symbol': coin['symbol'],
-                    'name': coin['name'],
                     'allocation_percentage': round(weight * 100, 2),
-                    'current_price': coin.get('current_price', 0),
-                    'market_cap': coin.get('market_cap', 0),
-                    'investment_score': coin.get('investment_score', 0),
-                    'risk_score': coin.get('risk_score', 0),
-                    'expected_return': coin.get('expected_return', 0),
-                    'volatility': coin.get('volatility', 0),
-                    'stability_score': coin.get('stability_score', 0),
-                    'liquidity_ratio': coin.get('liquidity_ratio', 0),
+                    'current_price': float(coin.get('current_price', 0)),
+                    'market_cap': float(coin.get('market_cap', 0)),
+                    'investment_score': float(coin.get('investment_score', 0)),
+                    'risk_score': float(coin.get('risk_score', 0)),
+                    'expected_return': float(coin.get('expected_return', 0)),
+                    'volatility': float(coin.get('volatility', 0)),
+                    'stability_score': float(coin.get('stability_score', 0)),
+                    'liquidity_ratio': float(coin.get('liquidity_ratio', 0)),
                     'market_sentiment': coin.get('market_sentiment', 'neutral'),
                     'risk_level': coin.get('risk_level', 'unknown'),
-                    'price_change_24h': coin.get('price_change_24h', 0),
-                    'volume_24h': coin.get('volume_24h', 0)
+                    'price_change_24h': float(coin.get('price_change_24h', 0)),
+                    'volume_24h': float(coin.get('volume_24h', 0))
                 }
                 for coin, weight in recommended_coins_lp
             ]
 
             investment_amounts = {
-                coin_data['symbol']: round(total_investment * weight, 2)
+                coin_data['symbol']: round(float(total_investment) * float(weight), 2)
                 for coin_data, weight in recommended_coins_lp
             }
             
@@ -281,13 +282,12 @@ class PortfolioOptimizationAgent:
                     # `recommended_coins_lp` es una lista de (coin_dict, weight_float) tuples.
                     # Necesitamos el símbolo de la moneda y el peso directamente.
                     allocation_percentages=json.dumps({coin_data['symbol']: round(weight * 100, 2) for coin_data, weight in recommended_coins_lp}),
-                    expected_return=portfolio_metrics['expected_return'],
-                    risk_score=portfolio_metrics['risk_score'],
-                    confidence_level=portfolio_metrics['confidence_level'],
+                    expected_return=float(portfolio_metrics['expected_return']),
+                    risk_score=float(portfolio_metrics['risk_score']),
+                    confidence_level=float(portfolio_metrics['confidence_level']),
                     reasoning=reasoning
                 )
-                self.db.add(recommendation)
-                self.db.commit()
+                self.repo.save_portfolio_recommendation(recommendation)
                 recommendation_id = recommendation.id
 
             return {
@@ -299,7 +299,7 @@ class PortfolioOptimizationAgent:
                     'investment_horizon': user_profile.get('investment_horizon', 'medium')
                 },
                 'portfolio_optimization': {
-                    'top_4_coins': final_recommended_coins,
+                    'recommended_coins': final_recommended_coins,
                     'allocation_percentages': allocation_percentages_lp,
                     'investment_amounts': investment_amounts,
                     'total_investment': total_investment
@@ -315,14 +315,14 @@ class PortfolioOptimizationAgent:
             }
 
         except Exception as e:
-            self.db.rollback()
+            self.repo.rollback()
             print(f"Error optimizando portfolio con PL: {e}")
             return {
                 'success': False,
                 'message': f'Error en optimización (PL): {str(e)}'
             }
         finally:
-            self.db.close()
+            self.repo.close()
 
     # MÉTODOS AUXILIARES (mantienen la misma lógica, solo cambian de nombre o se adaptan)
     # Ya no se usa calculate_portfolio_weights ni _calculate_coin_score directamente para la PL,
@@ -332,6 +332,10 @@ class PortfolioOptimizationAgent:
         """
         Calcula las métricas esperadas del portafolio final.
         (Esta función se mantiene igual, ya que opera sobre las monedas y pesos resultantes de PL).
+        Args:
+            selected_coins (List[Tuple[Dict[str, Any], float]]): Lista de monedas seleccionadas con sus pesos.
+        Returns:
+            Dict[str, float]: Un diccionario con el retorno esperado, score de riesgo y nivel de confianza.
         """
         if not selected_coins:
             return {'expected_return': 0, 'risk_score': 50, 'confidence_level': 0}
@@ -341,14 +345,14 @@ class PortfolioOptimizationAgent:
         total_confidence = 0
         
         for coin, weight in selected_coins:
-            coin_return = coin.get('expected_return', 0.0) / 100 
+            coin_return = float(coin.get('expected_return', 0.0)) / 100 
             expected_return += coin_return * weight
             
-            coin_risk = coin.get('risk_score', 50.0)
+            coin_risk = float(coin.get('risk_score', 50.0))
             total_risk += coin_risk * weight
             
-            investment_score = coin.get('investment_score', 0.0)
-            stability_score = coin.get('stability_score', 0.0)
+            investment_score = float(coin.get('investment_score', 0.0))
+            stability_score = float(coin.get('stability_score', 0.0))
             coin_confidence = (abs(investment_score) + stability_score) / 2
             total_confidence += coin_confidence * weight
         
@@ -375,13 +379,13 @@ class PortfolioOptimizationAgent:
 
         for i, (coin, weight) in enumerate(selected_coins, 1):
             percentage = round(weight * 100, 1)
-            reasoning += f"{i}. {coin['name']} ({coin['symbol']}) - {percentage}%\n"
-            reasoning += f"   • Investment Score: {coin.get('investment_score', 0)}\n"
-            reasoning += f"   • Estabilidad: {coin.get('stability_score', 0)}/100\n"
-            reasoning += f"   • Risk Score: {coin.get('risk_score', 0)}/100\n"
-            reasoning += f"   • Retorno esperado: {coin.get('expected_return', 0)}%\n"
-            reasoning += f"   • Volatilidad: {coin.get('volatility', 0)}%\n"
-            reasoning += f"   • Liquidez: {coin.get('liquidity_ratio', 0)}\n"
+            reasoning += f"{i}.  ({coin['symbol']}) - {percentage}%\n"
+            reasoning += f"   • Investment Score: {float(coin.get('investment_score', 0))}\n"
+            reasoning += f"   • Estabilidad: {float(coin.get('stability_score', 0))}/100\n"
+            reasoning += f"   • Risk Score: {float(coin.get('risk_score', 0))}/100\n"
+            reasoning += f"   • Retorno esperado: {float(coin.get('expected_return', 0))}%\n"
+            reasoning += f"   • Volatilidad: {float(coin.get('volatility', 0))}%\n"
+            reasoning += f"   • Liquidez: {float(coin.get('liquidity_ratio', 0))}\n"
             reasoning += f"   • Sentimiento: {coin.get('market_sentiment', 'neutral')}\n\n"
         
         reasoning += f"Métricas del portfolio:\n"
@@ -393,32 +397,24 @@ class PortfolioOptimizationAgent:
     
     async def optimize_portfolio_with_economic_metrics(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Obtiene métricas económicas y luego llama al optimizador PL.
-        (Esta función se adapta para usar optimize_portfolio_lp).
+        Obtiene métricas económicas relevantes para el usuario y luego optimiza el portafolio.
         """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get("http://localhost:8000/api/economic-metrics")
-                if response.status_code != 200:
-                    return {
-                        'success': False,
-                        'message': 'No se pudieron obtener las métricas económicas'
-                    }
-                
-                metrics_data = response.json()
-                available_coins = metrics_data.get('metrics', [])
+            # Obtener métricas relevantes para el usuario usando el agente de análisis económico
+            available_coins = self.economic_analyzer.get_user_relevant_metrics(user_data)
             
-            # Llama a la nueva función de optimización PL
+            if not available_coins:
+                return {
+                    'success': False,
+                    'message': 'No se pudieron obtener métricas económicas para las criptomonedas disponibles'
+                }
+            
+            # Llama a la función de optimización PL con todas las métricas
             return self.optimize_portfolio_lp(available_coins, user_data)
-            
+                
         except Exception as e:
-            if hasattr(self, 'db'):
-                self.db.rollback()
             print(f"Error en la preparación para optimización PL: {e}")
             return {
                 'success': False,
                 'message': f'Error en la preparación de optimización (PL): {str(e)}'
             }
-        finally:
-            if hasattr(self, 'db'):
-                self.db.close()

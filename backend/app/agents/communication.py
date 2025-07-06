@@ -446,7 +446,7 @@ COMPOSICIÓN DEL PORTFOLIO:
             
             for coin in top_coins:
                 prompt += f"""
-- {coin['name']} ({coin['symbol']}):
+- {coin['symbol']}:
   * Asignación: {coin['allocation_percentage']}%
   * Monto de inversión: ${investment_amounts.get(coin['symbol'], 0):,.2f}
   * Precio actual: ${coin['current_price']:,.4f}
