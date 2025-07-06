@@ -131,9 +131,6 @@ class HistoricalDataRequest(BaseModel):
     days: int = 14  # Días de datos históricos a obtener
     limit: int = 10
 
-class EconomicMetricRequest(BaseModel):
-    symbol: str
-
 # Dependency para obtener la sesión de base de datos
 def get_db():
     db = SessionLocal()
@@ -173,8 +170,9 @@ async def update_crypto_data(background_tasks: BackgroundTasks):
 @router.post("/get-portfolio-recommendation")
 async def get_portfolio_recommendation(request: PortfolioRequestModel):
     """
-    Endpoint para obtener recomendaciones de portfolio personalizadas
-    Ejecuta el flujo: Obtener métricas del usuario -> Optimizar portfolio -> Retornar top 5
+    Endpoint para obtener recomendaciones de portfolio personalizadas usando datos de la base de datos.
+    Ejecuta el flujo: Validar datos del usuario -> Optimizar portfolio con métricas económicas -> Retornar resultado completo.
+    Respeta la arquitectura por capas y formato consistente del sistema.
     """
     try:
         # Convertir request a diccionario
@@ -186,26 +184,21 @@ async def get_portfolio_recommendation(request: PortfolioRequestModel):
             "preferred_sectors": request.preferred_sectors
         }
         
-        # Optimizar portfolio
+        # Optimizar portfolio usando métricas económicas
         optimization_result = await portfolio_optimizer.optimize_portfolio_with_economic_metrics(user_data)
-        #print("Resultado de optimización:", optimization_result)
+        
         if not optimization_result.get('success'):
             raise HTTPException(
                 status_code=500, 
                 detail=optimization_result.get('message', 'Error en optimización de portfolio')
             )
         
-        return {
-            "success": True,
-            "data": {
-                "recommendations": optimization_result['recommendations'],
-                "expected_return": optimization_result['expected_return'],
-                "risk_score": optimization_result['risk_score'],
-                "confidence_level": optimization_result['confidence_level'],
-                "reasoning": optimization_result['reasoning']
-            },
-            "timestamp": datetime.now().isoformat()
-        }
+        # Retornar la respuesta completa del optimizador con timestamp adicional
+        optimization_result["timestamp"] = datetime.now().isoformat()
+        optimization_result["data_source"] = "database"
+        optimization_result["note"] = "Recomendaciones generadas usando métricas económicas calculadas"
+        
+        return optimization_result
         
     except HTTPException:
         raise
@@ -407,19 +400,22 @@ async def get_market_top_5():
 
 
 @router.post("/economic-metrics")
-async def get_economic_metrics(request: EconomicMetricRequest, db: Session = Depends(get_db)):
+async def get_economic_metrics(db: Session = Depends(get_db)):
     """
     Endpoint que retorna métricas cuantitativas de inversión y riesgo ya calculadas desde la base de datos.
     Respeta la arquitectura por capas usando el repositorio.
     """
     try:
         # Usar el repositorio a través del servicio para obtener métricas ya calculadas
-        economic_metrics = economic_analyzer.get_coin_metrics(request.symbol)
-        
-        if not economic_metrics:
-            raise HTTPException(status_code=404, detail="No se encontraron métricas económicas para el símbolo proporcionado")
-        
-        # Retornar métricas con timestamp y fuente de datos
+        symbols = economic_analyzer.get_all_symbols()
+        economic_metrics = {}
+        for symbol in symbols:
+            economic_metrics[symbol] = economic_analyzer.get_coin_metrics(symbol)
+
+            if not economic_metrics:
+                raise HTTPException(status_code=404, detail="No se encontraron métricas económicas para el símbolo proporcionado")
+
+            # Retornar métricas con timestamp y fuente de datos
         return {
             "success": True,
             "metrics": economic_metrics,
