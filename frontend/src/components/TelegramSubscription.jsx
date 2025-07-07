@@ -31,6 +31,23 @@ export default function TelegramSubscription({ user }) {
     };
   }, [showModal, showConfirmModal]);
 
+  // Verificar estado de suscripción al cargar el componente
+  useEffect(() => {
+    const checkSubscriptionStatus = async () => {
+      try {
+        const userData = JSON.parse(localStorage.getItem('userData'));
+        if (userData && userData.user_id) {
+          const response = await apiClient.get(`/api/user-profiles/by-id/${userData.user_id}`);
+          setIsSubscribed(response.data.is_subscribed);
+        }
+      } catch (error) {
+        console.error('Error checking subscription status:', error);
+      }
+    };
+
+    checkSubscriptionStatus();
+  }, []);
+
   const handleSubscribe = () => {
     setShowConfirmModal(true);
   };
@@ -81,6 +98,12 @@ export default function TelegramSubscription({ user }) {
       const subscriptionResponse = await apiClient.post('/api/subscribe', subscriptionData);
       
       if (subscriptionResponse.data.success) {
+        // Actualizar el estado de suscripción en el backend
+        await apiClient.put(`/api/user-profiles/by-id/${userData.user_id}`, {
+          ...userProfileData,
+          is_subscribed: true
+        });
+        
         setIsSubscribed(true);
         setShowConfirmModal(false);
         setShowModal(true); // Mostrar el modal de instrucciones de Telegram
@@ -119,7 +142,7 @@ export default function TelegramSubscription({ user }) {
           {isSubscribed ? 'Suscrito a' : 'Suscribirse a'} Telegram:
         </span>
         <button
-          onClick={handleSubscribe}
+          onClick={isSubscribed ? null : handleSubscribe}
           disabled={isSubscribed}
           style={{
             background: isSubscribed ? 'transparent' : 'linear-gradient(135deg, #0088cc 0%, #0066aa 100%)',
