@@ -280,11 +280,16 @@ class EconomicAnalysisRepo:
             result = self.db.execute(text(querytext), {"symbol": symbol.upper()}).fetchone()
             if result:
                 # Convertir Row a diccionario usando _asdict() o acceso por columnas
+                logger.debug(f"Métricas encontradas para {symbol.upper()}")
                 return result._asdict() if hasattr(result, '_asdict') else dict(zip(result.keys(), result))
             else:
+                logger.warning(f"No se encontraron métricas para el símbolo {symbol.upper()}")
                 raise ValueError(f"No se encontraron métricas para el símbolo {symbol}")
+        except ValueError:
+            # Re-lanzar ValueError para mantener el comportamiento esperado
+            raise
         except Exception as e:
-            logger.error(f"Error obteniendo métricas para {symbol}: {e}")
+            logger.error(f"Error de base de datos obteniendo métricas para {symbol}: {e}")
             raise
 
     def __del__(self):

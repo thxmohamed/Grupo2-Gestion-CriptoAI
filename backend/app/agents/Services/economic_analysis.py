@@ -528,19 +528,33 @@ class EconomicAnalysisAgent:
         print(f"Se obtuvo: {len(historical_data)} datos de la base de datos para {symbol}")
         return self.compute_single_coin_metrics(historical_data, symbol)
     def get_coins_metrics(self) -> Dict[str, Any]:
-        print("Obteniendo métricas de todas las monedas desde la base de datos...")
         """
         Obtiene las métricas de todas las monedas desde la base de datos.
         Returns:
             Dict[str, Any]: Un diccionario con las métricas de todas las monedas.
         """
+        logger.info("Obteniendo métricas de todas las monedas desde la base de datos...")
         symbols = self.get_all_symbols()
         metrics = {}
+        symbols_not_found = []
+        
         for symbol in symbols:
             try:
                 metrics[symbol] = self.repo.get_coin_metrics(symbol)
-            except ValueError:
+                logger.debug(f"Métricas obtenidas exitosamente para {symbol}")
+            except ValueError as e:
+                symbols_not_found.append(symbol)
+                logger.warning(f"No se encontraron métricas para {symbol}: {e}")
                 continue
+            except Exception as e:
+                symbols_not_found.append(symbol)
+                logger.error(f"Error inesperado obteniendo métricas para {symbol}: {e}")
+                continue
+        
+        logger.info(f"Métricas obtenidas para {len(metrics)} de {len(symbols)} símbolos")
+        if symbols_not_found:
+            logger.warning(f"Símbolos sin métricas: {symbols_not_found}")
+            
         return metrics
     def get_coin_metrics(self, symbol: str):
         """

@@ -409,29 +409,58 @@ async def get_economic_metrics(db: Session = Depends(get_db)):
     """
     Endpoint que retorna métricas cuantitativas de inversión y riesgo ya calculadas desde la base de datos.
     Respeta la arquitectura por capas usando el repositorio.
+    Solo retorna las métricas que existen, omitiendo las que no tienen datos.
     """
     try:
         # Usar el repositorio a través del servicio para obtener métricas ya calculadas
         symbols = economic_analyzer.get_all_symbols()
         economic_metrics = {}
-        for symbol in symbols:
-            economic_metrics[symbol] = economic_analyzer.get_coin_metrics(symbol)
+        symbols_not_found = []
         
+        for symbol in symbols:
+            try:
+                metrics = economic_analyzer.get_coin_metrics(symbol)
+                economic_metrics[symbol] = metrics
+                logger.info(f"Métricas obtenidas exitosamente para {symbol}")
+            except ValueError as e:
+                # Registrar el símbolo que no se encontró pero continuar con el resto
+                symbols_not_found.append(symbol)
+                logger.warning(f"No se encontraron métricas para {symbol}: {e}")
+                continue
+            except Exception as e:
+                # Para otros errores, también continuar pero registrar el error
+                symbols_not_found.append(symbol)
+                logger.error(f"Error obteniendo métricas para {symbol}: {e}")
+                continue
+        
+        # Solo lanzar error si no se encontraron métricas para ningún símbolo
         if not economic_metrics:
-            raise HTTPException(status_code=404, detail="No se encontraron métricas económicas para el símbolo proporcionado")
+            raise HTTPException(
+                status_code=404, 
+                detail="No se encontraron métricas económicas para ningún símbolo. Verifique que los datos estén actualizados."
+            )
         
         # Retornar métricas con timestamp y fuente de datos
-        return {
+        response_data = {
             "success": True,
             "metrics": economic_metrics,
             "timestamp": datetime.now().isoformat(),
             "data_source": "database",
-            "note": "Métricas obtenidas directamente de la base de datos"
+            "note": "Métricas obtenidas directamente de la base de datos",
+            "symbols_found": len(economic_metrics),
+            "total_symbols_requested": len(symbols)
         }
         
-    except ValueError as e:
-        # Error específico cuando no se encuentra el símbolo
-        raise HTTPException(status_code=404, detail=str(e))
+        # Incluir información sobre símbolos no encontrados si los hay
+        if symbols_not_found:
+            response_data["symbols_not_found"] = symbols_not_found
+            response_data["warning"] = f"Se omitieron {len(symbols_not_found)} símbolos sin métricas disponibles"
+        
+        return response_data
+        
+    except HTTPException:
+        # Re-lanzar HTTPException para que mantenga el código de estado correcto
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo métricas económicas: {str(e)}")
 
