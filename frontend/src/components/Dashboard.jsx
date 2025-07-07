@@ -68,12 +68,16 @@ export default function CryptoDashboard({ user }) {
     setBalanceLoading(true);
     try {
       const response = await apiClient.get(`/api/wallet/balance/${userId}`);
-      const updatedBalance = response.data.balance;
+      const updatedBalance = response.data.wallet_balance;
+
+      const userdata = await apiClient.get(`/api/user-profiles/by-id/${userId}`);
+
+      console.log("Datos del usuario:", userdata.data);
       
       console.log("Fetch balance response:", {
         userId,
-        balanceAnterior: displayBalance,
-        balanceNuevo: updatedBalance,
+        balanceActual: updatedBalance,
+        balanceAnterior: userdata.data.wallet_balance,
         timestamp: new Date().toISOString()
       });
       
@@ -109,7 +113,7 @@ export default function CryptoDashboard({ user }) {
   // Sincronizar displayBalance con currentUser
   useEffect(() => {
     if (currentUser?.wallet_balance !== undefined) {
-      setDisplayBalance(currentUser.wallet_balance);
+      setDisplayBalance(displayBalance);
     }
   }, [currentUser?.wallet_balance]);
 

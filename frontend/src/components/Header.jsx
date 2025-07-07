@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import apiClient from "../http-common";
 
 export function Header({ user, onLogout }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [currentBalance, setCurrentBalance] = useState(Number(user?.wallet_balance) || 0);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -15,6 +18,65 @@ export function Header({ user, onLogout }) {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Función para obtener el balance actualizado
+  const fetchUserBalance = async () => {
+    if (!user?.user_id) return;
+    
+    setBalanceLoading(true);
+    try {
+      const response = await apiClient.get(`/api/wallet/balance/${user.user_id}`);
+      
+      // Intentar diferentes campos posibles
+      const updatedBalance = response.data.balance || 
+                           response.data.wallet_balance || 
+                           response.data.new_balance || 
+                           0;
+      
+      setCurrentBalance(updatedBalance);
+    } catch (err) {
+      console.error("Error al obtener balance en Header:", err);
+      // En caso de error, mantener el balance actual del usuario
+      if (user?.wallet_balance !== undefined) {
+        setCurrentBalance(user.wallet_balance);
+      }
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  // Sincronizar balance inicial cuando cambie el usuario
+  useEffect(() => {
+    if (user?.wallet_balance !== undefined) {
+      const balance = Number(user.wallet_balance) || 0;
+      setCurrentBalance(balance);
+    }
+  }, [user?.wallet_balance]);
+
+  // Obtener balance actualizado periódicamente y cuando el usuario cambie
+  useEffect(() => {
+    if (user?.user_id) {
+      // Obtener balance inmediatamente
+      fetchUserBalance();
+      
+      // Configurar intervalo para actualizar cada 500ms (súper rápido)
+      const interval = setInterval(fetchUserBalance, 500);
+      
+      return () => clearInterval(interval);
+    }
+  }, [user?.user_id]);
+
+  // Escuchar eventos de actualización del balance desde otras partes de la app
+  useEffect(() => {
+    const handleBalanceUpdate = (event) => {
+      if (event.detail && event.detail.userId === user?.user_id) {
+        setCurrentBalance(event.detail.balance);
+      }
+    };
+
+    window.addEventListener('balanceUpdated', handleBalanceUpdate);
+    return () => window.removeEventListener('balanceUpdated', handleBalanceUpdate);
+  }, [user?.user_id]);
 
   const isActive = (path) => location.pathname === path;
 
@@ -31,11 +93,13 @@ export function Header({ user, onLogout }) {
   };
 
   const formatBalance = (balance) => {
+    // Asegurar que balance sea un número válido
+    const numBalance = Number(balance) || 0;
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2
-    }).format(balance);
+    }).format(numBalance);
   };
 
   return (
@@ -276,8 +340,25 @@ export function Header({ user, onLogout }) {
                     <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
                       ¡Hola, {user.nombre}!
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-accent)' }}>
-                      {formatBalance(user.wallet_balance || 0)}
+                    <div style={{ 
+                      fontSize: '12px', 
+                      color: 'var(--text-accent)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      {formatBalance(currentBalance)}
+                      {balanceLoading && (
+                        <div style={{
+                          width: '6px',
+                          height: '6px',
+                          border: '1px solid var(--text-accent)',
+                          borderTop: '1px solid transparent',
+                          borderRadius: '50%',
+                          animation: 'spin 0.8s linear infinite',
+                          opacity: 0.7
+                        }} />
+                      )}
                     </div>
                   </div>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
