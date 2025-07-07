@@ -8,6 +8,7 @@ export default function TelegramSubscription({ user }) {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   // Manejar escape y prevenir scroll del body
   useEffect(() => {
@@ -60,18 +61,19 @@ export default function TelegramSubscription({ user }) {
 
       // Obtener los datos del usuario desde la API
       const userResponse = await apiClient.get(`/api/user-profiles/by-id/${userData.user_id}`);
-      const userProfile = userResponse.data;
+      const userProfileData = userResponse.data;
+      setUserProfile(userProfileData);
 
       // Preparar los datos para la suscripción
       const subscriptionData = {
-        user_id: userProfile.user_id,
-        email: userProfile.email,
-        phone: userProfile.telefono || '',
+        user_id: userProfileData.user_id,
+        email: userProfileData.email,
+        phone: userProfileData.telefono || '',
         notification_type: "email",
         frequency: "daily",
-        risk_tolerance: userProfile.risk_tolerance || "moderate",
-        investment_amount: userProfile.investment_amount || 1000,
-        investment_horizon: userProfile.investment_horizon || "medium",
+        risk_tolerance: userProfileData.risk_tolerance || "moderate",
+        investment_amount: userProfileData.investment_amount || 1000,
+        investment_horizon: userProfileData.investment_horizon || "medium",
         preferred_sectors: []
       };
 
@@ -525,7 +527,7 @@ export default function TelegramSubscription({ user }) {
                     fontWeight: '700',
                     letterSpacing: '1px'
                   }}>
-                    /start {user?.user_id}
+                    /start {userProfile?.user_id}
                   </div>
                 </div>
                 
