@@ -343,7 +343,7 @@ export default function TelegramSubscription({ user }) {
                 ) : (
                   <>
                     <span>✅</span>
-                    Sí, suscribir
+                    Sí, deseo continuar
                   </>
                 )}
               </button>

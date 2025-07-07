@@ -7,6 +7,7 @@ import asyncio
 import httpx
 import json
 import logging
+from decimal import Decimal
 
 from app.agents.data_collector import DataCollectorAgent
 from app.agents.Services.economic_analysis import EconomicAnalysisAgent
@@ -96,6 +97,10 @@ class UserProfileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        # Convertir Decimal a float para JSON
+        json_encoders = {
+            Decimal: float
+        }
 
 
 # Modelo Pydantic para el request de optimización de portfolio
@@ -123,6 +128,12 @@ class LoginRequest(BaseModel):
 
 class DepositRequest(BaseModel):
     amount: float
+    
+    class Config:
+        # Permite la conversión automática de tipos
+        json_encoders = {
+            Decimal: float
+        }
 
 class TelegramReportRequest(BaseModel):
     user_id: str
@@ -692,7 +703,7 @@ async def login_user(request: LoginRequest, db: Session = Depends(get_db)):
         "message": "Login exitoso",
         "user_id": user.id,
         "nombre": user.nombre,
-        "wallet_balance": user.wallet_balance
+        "wallet_balance": float(user.wallet_balance)
     }
 
 @router.post("/wallet/deposit/{user_id}")
@@ -704,13 +715,15 @@ async def deposit_wallet(user_id: int, request: DepositRequest, db: Session = De
     if request.amount <= 0:
         raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
 
-    user.wallet_balance += request.amount
+    # Convertir el monto a Decimal para evitar problemas de tipo
+    amount_decimal = Decimal(str(request.amount))
+    user.wallet_balance += amount_decimal
     db.commit()
     db.refresh(user)
 
     return {
         "message": "Depósito exitoso",
-        "nuevo_saldo": user.wallet_balance
+        "nuevo_saldo": float(user.wallet_balance)
     }
 
 @router.get("/wallet/balance/{user_id}")
@@ -719,7 +732,7 @@ async def get_wallet_balance(user_id: int, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return {
-        "wallet_balance": user.wallet_balance
+        "wallet_balance": float(user.wallet_balance)
     }
 
 

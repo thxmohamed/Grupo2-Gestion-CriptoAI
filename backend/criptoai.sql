@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     nombre VARCHAR(100) NOT NULL,
     apellido VARCHAR(100) NOT NULL,
     telefono VARCHAR(20),
-    risk_tolerance VARCHAR(10) NOT NULL DEFAULT 'moderate',
+    risk_tolerance VARCHAR(20) NOT NULL DEFAULT 'moderate',
     investment_amount DECIMAL(15,2) NOT NULL DEFAULT 1000.0,
     investment_horizon VARCHAR(20) NOT NULL DEFAULT 'medium',
     preferred_sectors TEXT,  -- JSON string
