@@ -457,7 +457,7 @@ export default function Register() {
               fontSize: '14px',
               fontWeight: '600'
             }}>
-              Monto de Inversión (USD)
+              Horizonte de inversión (USD)
             </label>
             <input
               type="number"
