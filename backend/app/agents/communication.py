@@ -426,7 +426,8 @@ class CommunicationAgent:
             risk_score = portfolio_metrics.get('risk_score', 0)
             confidence_level = portfolio_metrics.get('confidence_level', 0)
             
-            top_coins = portfolio_optimization.get('top_4_coins', [])
+            # Corregir el nombre del campo para obtener las monedas recomendadas
+            top_coins = portfolio_optimization.get('recommended_coins', [])
             allocation_percentages = portfolio_optimization.get('allocation_percentages', {})
             investment_amounts = portfolio_optimization.get('investment_amounts', {})
             total_investment = portfolio_optimization.get('total_investment', 0)
@@ -462,15 +463,27 @@ COMPOSICIÓN DEL PORTFOLIO:
             prompt += """
 
 INSTRUCCIONES PARA EL REPORTE:
-1. Explica en lenguaje sencillo y profesional qué significa esta composición de portfolio
-2. Analiza los riesgos y oportunidades de cada criptomoneda
-3. Explica el significado del retorno esperado negativo si aplica
-4. Proporciona recomendaciones sobre la diversificación
-5. Incluye advertencias importantes sobre la volatilidad del mercado de criptomonedas
-6. Termina con un resumen ejecutivo de máximo 3 puntos clave
-7. Usa un tono profesional pero accesible
-8. Incluye emojis apropiados para hacer el reporte más visual
-9. Debe tener 100 palabras como máximo
+📌 Explica en lenguaje sencillo y profesional qué significa esta composición de portfolio, mencionando que fue construida para maximizar el retorno ajustado al riesgo mediante herramientas profesionales como Simplex.
+
+🪙 Analiza brevemente los riesgos y oportunidades de cada criptomoneda incluida (por ejemplo: BTC, ETH, altcoins).
+
+📉 Si el retorno esperado es negativo, explica qué significa y por qué puede seguir siendo útil en un contexto de largo plazo o diversificación.
+
+⚠️ Incluye advertencias importantes sobre la volatilidad del mercado cripto, recordando que los precios pueden cambiar bruscamente.
+
+📆 Sugiere un horizonte de inversión (ej. mediano o largo plazo) y la importancia de monitorear regularmente el portafolio.
+
+🌐 NO MENCIONES DIVERSIFICACION
+
+✅ Termina con un resumen ejecutivo claro de 3 puntos clave.
+
+🗣️ Usa un tono profesional pero accesible, sin tecnicismos innecesarios.
+
+🎯 Debe tener 200 palabras como máximo.
+
+📊 Sé positivo y optimista: las métricas fueron calculadas con optimización avanzada (Simplex), lo que respalda la solidez de los resultados.
+
+🎨 Incluye emojis adecuados para hacerlo visualmente más amigable.
 
 Debe estar estructurado con encabezados claros.
 """

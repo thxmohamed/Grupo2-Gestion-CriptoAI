@@ -50,7 +50,34 @@ export default function UserMetricsPage() {
       })
       .catch(err => {
         console.error("Error al obtener datos:", err);
-        setError("No se pudo cargar el portafolio o el reporte.");
+        
+        // Manejar específicamente el error de wallet vacío
+        if (err.response && err.response.status === 400 && 
+            err.response.data.detail && 
+            err.response.data.detail.includes("wallet está vacío")) {
+          setError(
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <div style={{ fontSize: '24px', marginBottom: '10px' }}>💰</div>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '10px', color: '#f59e0b' }}>
+                ¡El wallet del usuario está vacío!
+              </div>
+              <div style={{ marginBottom: '15px', color: 'var(--text-secondary)' }}>
+                Para crear el portafolio optimizado el usuario necesita depositar fondos primero.
+              </div>
+              <div style={{ 
+                padding: '10px', 
+                background: 'var(--bg-secondary)', 
+                borderRadius: '8px',
+                color: 'var(--text-primary)',
+                fontSize: '14px'
+              }}>
+                💡 El usuario debe ir a su Dashboard para realizar un depósito
+              </div>
+            </div>
+          );
+        } else {
+          setError("No se pudo cargar el portafolio o el reporte.");
+        }
         setLoading(false);
       });
   }, [userId]);

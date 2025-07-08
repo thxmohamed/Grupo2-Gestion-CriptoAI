@@ -51,7 +51,43 @@ export default function Portfolio({ user }) {
       })
       .catch(err => {
         console.error("Error al obtener datos:", err);
-        setError("No se pudo cargar el portafolio o el reporte.");
+        
+        // Manejar específicamente el error de wallet vacío
+        if (err.response && err.response.status === 400 && 
+            err.response.data.detail && 
+            err.response.data.detail.includes("wallet está vacío")) {
+          setError(
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <div style={{ fontSize: '24px', marginBottom: '10px' }}>💰</div>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '10px', color: '#f59e0b' }}>
+                ¡Tu wallet está vacío!
+              </div>
+              <div style={{ marginBottom: '15px', color: 'var(--text-secondary)' }}>
+                Para crear tu portafolio optimizado necesitas depositar fondos primero.
+              </div>
+              <button
+                onClick={() => navigate('/dashboard')}
+                style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.target.style.transform = 'scale(1.05)'}
+                onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+              >
+                🚀 Ir a Dashboard para Depositar
+              </button>
+            </div>
+          );
+        } else {
+          setError("No se pudo cargar el portafolio o el reporte.");
+        }
         setLoading(false);
       });
   }, [user, navigate]);

@@ -873,11 +873,19 @@ async def optimize_portfolio(request: PortfolioOptimizeRequest, db: Session = De
                 detail=f"No se encontró el perfil del usuario con ID: {request.id}"
             )
         
-        # Convertir el perfil del usuario a diccionario
+        # Verificar que el usuario tenga balance en wallet antes de optimizar
+        wallet_balance = float(user_profile.wallet_balance or 0)
+        if wallet_balance <= 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="💰 ¡Tu wallet está vacío! Para crear tu portafolio optimizado necesitas depositar fondos primero. ¡Comienza invirtiendo desde $100!"
+            )
+        
+        # Convertir el perfil del usuario a diccionario usando wallet_balance
         user_data = {
             "user_id": user_profile.user_id,
             "risk_tolerance": user_profile.risk_tolerance,
-            "investment_amount": user_profile.investment_amount,
+            "investment_amount": wallet_balance,  # Usar wallet_balance en lugar de investment_amount
             "investment_horizon": user_profile.investment_horizon,
             "preferred_sectors": json.loads(user_profile.preferred_sectors) if user_profile.preferred_sectors else []
         }
